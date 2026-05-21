@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -36,12 +39,12 @@ class Config:
             type_inference=os.environ.get("SCHEME_LANGSERVER_TYPE_INFERENCE", "enable"),
             top_environment=os.environ.get("SCHEME_LANGSERVER_TOP_ENVIRONMENT", "R6RS"),
             debug=os.environ.get("SCHEME_LANGSERVER_DEBUG", "disable"),
-            timeout=float(os.environ.get("SCHEME_LANGSERVER_TIMEOUT", "30.0")),
-            completion_timeout=float(
-                os.environ.get("SCHEME_LANGSERVER_COMPLETION_TIMEOUT", "30.0")
+            timeout=_env_float("SCHEME_LANGSERVER_TIMEOUT", 30.0),
+            completion_timeout=_env_float(
+                "SCHEME_LANGSERVER_COMPLETION_TIMEOUT", 30.0
             ),
-            max_memory_mb=int(os.environ.get("SCHEME_LANGSERVER_MAX_MEMORY_MB", "1024")),
-            max_cpu_seconds=int(os.environ.get("SCHEME_LANGSERVER_MAX_CPU_SECONDS", "180")),
+            max_memory_mb=_env_int("SCHEME_LANGSERVER_MAX_MEMORY_MB", 1024),
+            max_cpu_seconds=_env_int("SCHEME_LANGSERVER_MAX_CPU_SECONDS", 180),
         )
 
     @staticmethod
@@ -56,11 +59,11 @@ class Config:
             if (path := _which(name)) is not None:
                 return path
 
-        # 3. Known local development paths
+        # 3. Known local development paths (fallback for dev environments)
         known_paths = [
-            Path.home() / "Documents" / "workspace" / "scheme-langserver" / "run",
             Path.cwd() / "scheme-langserver" / "run",
             Path.cwd().parent / "scheme-langserver" / "run",
+            Path.home() / "Documents" / "workspace" / "scheme-langserver" / "run",
         ]
         for p in known_paths:
             if p.exists():
@@ -88,9 +91,31 @@ class Config:
         return cmd
 
 
+def _env_float(name: str, default: float) -> float:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except ValueError:
+        logger.warning("Invalid %s=%r, using default %s", name, val, default)
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        logger.warning("Invalid %s=%r, using default %s", name, val, default)
+        return default
+
+
 def _which(name: str) -> str | None:
     """Simple which implementation."""
-    for path in os.environ.get("PATH", "").split(":"):
+    for path in os.environ.get("PATH", "").split(os.pathsep):
         full = Path(path) / name
         if full.exists() and full.is_file():
             return str(full.resolve())

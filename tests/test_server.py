@@ -51,6 +51,14 @@ class TestLspInitialize:
         result = await server_module.lsp_initialize("/project/root")
         assert "warning" in result["content"]
 
+    async def test_previous_root_is_string_not_cmd(self) -> None:
+        mock_client = MagicMock()
+        mock_client.config.build_cmd = MagicMock(return_value=["/bin/langserver", "/log"])
+        server_module._client = mock_client
+        result = await server_module.lsp_initialize("/project/root")
+        assert result["content"]["previous_root"] == "/project/root"
+        mock_client.config.build_cmd.assert_not_called()
+
 
 class TestLspShutdown:
     async def test_shuts_down_client(self) -> None:

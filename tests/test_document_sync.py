@@ -50,13 +50,10 @@ class TestDocumentManager:
         assert "file:///a.scm" in uris
         assert "file:///b.scm" in uris
 
-    async def test_change_without_open_creates_implicitly(self) -> None:
+    async def test_change_without_open_raises_runtime_error(self) -> None:
         dm = DocumentManager(client=AsyncMock())
-        await dm.change("file:///test.scm", "text")
-        doc = dm.get("file:///test.scm")
-        assert doc is not None
-        assert doc["version"] == 1
-        assert doc["text"] == "text"
+        with pytest.raises(RuntimeError, match="not open"):
+            await dm.change("file:///test.scm", "text")
 
     async def test_close_without_open_silent(self) -> None:
         dm = DocumentManager(client=AsyncMock())

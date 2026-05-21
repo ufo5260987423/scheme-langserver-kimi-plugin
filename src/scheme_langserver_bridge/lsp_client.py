@@ -45,6 +45,7 @@ class LspClient:
         self._stderr_task: asyncio.Task[None] | None = None
         self._shutdown = False
         self._crashed = False
+        self._write_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -132,7 +133,11 @@ class LspClient:
             ],
         }
 
-        result = await self._request("initialize", init_params)
+        try:
+            result = await self._request("initialize", init_params)
+        except Exception:
+            await self._cleanup()
+            raise
         await self._notify("initialized", {})
         self._initialized = True
         logger.info("scheme-langserver initialized")
@@ -152,6 +157,10 @@ class LspClient:
                 await self._notify("exit", None)
             except Exception as exc:
                 logger.warning("Exit notification failed: %s", exc)
+        await self._cleanup()
+
+    async def _cleanup(self) -> None:
+        self._shutdown = True
         if self._stderr_task:
             self._stderr_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -160,14 +169,13 @@ class LspClient:
             self._reader_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._reader_task
-        if self.process.returncode is None:
-            self.process.terminate()
+        if self.process and self.process.returncode is None:
+            self.process.kill()
             try:
-                await asyncio.wait_for(self.process.wait(), timeout=5.0)
+                await asyncio.wait_for(self.process.wait(), timeout=3.0)
             except TimeoutError:
-                self.process.kill()
-                await self.process.wait()
-        logger.info("scheme-langserver stopped")
+                pass
+        self.process = None
 
     # ------------------------------------------------------------------
     # Document sync
@@ -308,6 +316,8 @@ class LspClient:
                 "scheme-langserver process has crashed. "
                 "Please call lsp_shutdown and lsp_initialize to restart."
             )
+        if self._shutdown:
+            raise RuntimeError("LSP client is shutting down")
 
         req_id = self._next_id()
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
@@ -319,8 +329,9 @@ class LspClient:
 
         payload = json.dumps(message, ensure_ascii=False)
         data = f"Content-Length: {len(payload.encode('utf-8'))}\r\n\r\n{payload}"
-        self.process.stdin.write(data.encode("utf-8"))
-        await self.process.stdin.drain()
+        async with self._write_lock:
+            self.process.stdin.write(data.encode("utf-8"))
+            await self.process.stdin.drain()
 
         logger.debug("LSP request -> %s", payload)
 
@@ -328,7 +339,12 @@ class LspClient:
         try:
             return await asyncio.wait_for(future, timeout=effective_timeout)
         except TimeoutError:
-            self._pending.pop(req_id, None)
+            for fut in list(self._pending.values()):
+                if not fut.done():
+                    fut.set_exception(
+                        LspError(-32001, "LSP server terminated due to timeout")
+                    )
+            self._pending.clear()
             if self.process and self.process.returncode is None:
                 logger.warning(
                     "Request '%s' timed out after %.1fs; terminating scheme-langserver",
@@ -355,6 +371,8 @@ class LspClient:
                 "scheme-langserver process has crashed. "
                 "Please call lsp_shutdown and lsp_initialize to restart."
             )
+        if self._shutdown:
+            raise RuntimeError("LSP client is shutting down")
 
         message: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
         if params is not None:
@@ -362,8 +380,9 @@ class LspClient:
 
         payload = json.dumps(message, ensure_ascii=False)
         data = f"Content-Length: {len(payload.encode('utf-8'))}\r\n\r\n{payload}"
-        self.process.stdin.write(data.encode("utf-8"))
-        await self.process.stdin.drain()
+        async with self._write_lock:
+            self.process.stdin.write(data.encode("utf-8"))
+            await self.process.stdin.drain()
         logger.debug("LSP notify -> %s", payload)
 
     def _next_id(self) -> int:
@@ -384,10 +403,15 @@ class LspClient:
                 while True:
                     header = await reader.readline()
                     if not header:
+                        self._crashed = True
                         return
                     header_str = header.decode("utf-8", errors="replace").strip()
                     if header_str.startswith("Content-Length:"):
-                        length = int(header_str.split(":", 1)[1].strip())
+                        try:
+                            length = int(header_str.split(":", 1)[1].strip())
+                        except ValueError:
+                            logger.warning("Malformed Content-Length header: %s", header_str)
+                            continue
                     elif header_str == "":
                         # blank line -> end of headers
                         break
@@ -398,7 +422,7 @@ class LspClient:
                 # Read body
                 body = await reader.readexactly(length)
                 try:
-                    msg = json.loads(body.decode("utf-8"))
+                    msg = json.loads(body.decode("utf-8", errors="replace"))
                 except json.JSONDecodeError:
                     logger.warning("Failed to decode LSP message: %s", body)
                     continue
@@ -475,9 +499,18 @@ def _set_resource_limits(max_memory_bytes: int, max_cpu_seconds: int) -> None:
     """
     if not _HAS_RESOURCE:
         return
-    resource.setrlimit(resource.RLIMIT_AS, (max_memory_bytes, max_memory_bytes))
-    resource.setrlimit(resource.RLIMIT_CPU, (max_cpu_seconds, max_cpu_seconds))
-    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (max_memory_bytes, max_memory_bytes))
+    except ValueError:
+        pass
+    try:
+        resource.setrlimit(resource.RLIMIT_CPU, (max_cpu_seconds, max_cpu_seconds))
+    except ValueError:
+        pass
+    try:
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    except ValueError:
+        pass
 
 
 def _path_to_uri(path: str) -> str:

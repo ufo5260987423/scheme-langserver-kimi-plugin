@@ -25,7 +25,7 @@ _doc_manager: DocumentManager | None = None
 
 
 def _file_uri(path: str) -> str:
-    return "file://" + str(Path(path).resolve())
+    return "file://" + str(Path(path).absolute())
 
 
 def _ensure_client() -> LspClient:
@@ -103,7 +103,7 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
         return {
             "content": {
                 "warning": "LSP server already initialized.",
-                "previous_root": _client.config.build_cmd(root_dir),
+                "previous_root": root_dir,
             }
         }
 

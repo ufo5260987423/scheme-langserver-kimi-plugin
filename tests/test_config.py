@@ -81,3 +81,23 @@ class TestConfig:
         config = Config.from_env()
         assert config.max_memory_mb == 512
         assert config.max_cpu_seconds == 60
+
+    def test_invalid_timeout_fallback(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        fake_bin = tmp_path / "run"
+        fake_bin.touch()
+        monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
+        monkeypatch.setenv("SCHEME_LANGSERVER_TIMEOUT", "abc")
+        config = Config.from_env()
+        assert config.timeout == 30.0
+
+    def test_invalid_max_memory_mb_fallback(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        fake_bin = tmp_path / "run"
+        fake_bin.touch()
+        monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
+        monkeypatch.setenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", "not_a_number")
+        config = Config.from_env()
+        assert config.max_memory_mb == 1024

@@ -29,17 +29,10 @@ class DocumentManager:
         """Notify the server of a full-document change and bump the version."""
         doc = self._docs.get(uri)
         if doc is None:
-            version = 1
-            self._docs[uri] = {
-                "uri": uri,
-                "version": version,
-                "text": text,
-                "language_id": "scheme",
-            }
-        else:
-            version = doc["version"] + 1
-            doc["version"] = version
-            doc["text"] = text
+            raise RuntimeError(f"Document {uri} not open. Call open() first.")
+        version = doc["version"] + 1
+        doc["version"] = version
+        doc["text"] = text
 
         await self._client.did_change(uri, version, text)
 
