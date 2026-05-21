@@ -34,7 +34,9 @@ class LspClient:
         self._diagnostics: dict[str, list[dict[str, Any]]] = {}
         self._initialized = False
         self._reader_task: asyncio.Task[None] | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
         self._shutdown = False
+        self._crashed = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -53,6 +55,7 @@ class LspClient:
         )
 
         self._reader_task = asyncio.create_task(self._read_loop())
+        self._stderr_task = asyncio.create_task(self._drain_stderr())
 
         init_params = {
             "processId": None,
@@ -123,6 +126,10 @@ class LspClient:
         except Exception as exc:
             logger.warning("Shutdown request failed: %s", exc)
         await self._notify("exit", None)
+        if self._stderr_task:
+            self._stderr_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._stderr_task
         if self._reader_task:
             self._reader_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -226,6 +233,12 @@ class LspClient:
             {"textDocument": {"uri": uri}},
         )
 
+    async def workspace_symbol(self, query: str) -> Any:
+        return await self._request(
+            "workspace/symbol",
+            {"query": query},
+        )
+
     async def code_action(
         self,
         uri: str,
@@ -264,6 +277,11 @@ class LspClient:
     ) -> Any:
         if self.process is None or self.process.stdin is None:
             raise RuntimeError("LSP server not started")
+        if self._crashed or self.process.returncode is not None:
+            raise RuntimeError(
+                "scheme-langserver process has crashed. "
+                "Please call lsp_shutdown and lsp_initialize to restart."
+            )
 
         req_id = self._next_id()
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
@@ -292,6 +310,11 @@ class LspClient:
     async def _notify(self, method: str, params: Any) -> None:
         if self.process is None or self.process.stdin is None:
             raise RuntimeError("LSP server not started")
+        if self._crashed or self.process.returncode is not None:
+            raise RuntimeError(
+                "scheme-langserver process has crashed. "
+                "Please call lsp_shutdown and lsp_initialize to restart."
+            )
 
         message: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
         if params is not None:
@@ -346,8 +369,26 @@ class LspClient:
             raise
         except asyncio.IncompleteReadError:
             logger.info("LSP server stdout closed")
+            self._crashed = True
         except Exception as exc:
             logger.exception("LSP read loop error: %s", exc)
+            self._crashed = True
+
+    async def _drain_stderr(self) -> None:
+        """Continuously read stderr to prevent the subprocess from blocking."""
+        if self.process is None or self.process.stderr is None:
+            return
+        while True:
+            try:
+                line = await self.process.stderr.readline()
+            except asyncio.CancelledError:
+                raise
+            if not line:
+                break
+            logger.debug(
+                "LSP stderr: %s",
+                line.decode("utf-8", errors="replace").rstrip(),
+            )
 
     def _dispatch(self, msg: dict[str, Any]) -> None:
         if "id" in msg:

@@ -47,7 +47,12 @@ def _ensure_doc_manager() -> DocumentManager:
 def _lsp_result(result: Any) -> dict[str, Any]:
     """Wrap LSP result for MCP tool output."""
     if result is None:
-        return {"content": "No result from language server."}
+        return {
+            "content": {
+                "result": None,
+                "note": "No result from language server.",
+            }
+        }
     return {"content": result}
 
 
@@ -333,6 +338,21 @@ async def lsp_document_symbol(file_path: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+async def lsp_workspace_symbol(query: str) -> dict[str, Any]:
+    """Search symbols across the entire workspace.
+
+    Performs a cross-workspace symbol search using the language server.
+    Returns all symbols matching the query string across all indexed files.
+    """
+    client = _ensure_client()
+    try:
+        result = await client.workspace_symbol(query)
+        return _lsp_result(result)
+    except Exception as exc:
+        return _lsp_error(exc)
+
+
+@mcp.tool()
 async def lsp_code_action(
     file_path: str, start_line: int, start_character: int, end_line: int, end_character: int
 ) -> dict[str, Any]:
@@ -381,6 +401,7 @@ def _summarize_caps(caps: dict[str, Any]) -> dict[str, bool]:
         "rename": bool(caps.get("renameProvider")),
         "signatureHelp": bool(caps.get("signatureHelpProvider")),
         "documentSymbol": bool(caps.get("documentSymbolProvider")),
+        "workspaceSymbol": bool(caps.get("workspaceSymbolProvider")),
         "codeAction": bool(caps.get("codeActionProvider")),
         "diagnostics": bool(caps.get("publishDiagnostics")),
     }

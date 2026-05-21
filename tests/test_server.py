@@ -118,10 +118,35 @@ class TestLspDiagnostics:
         assert "error2" in str(result["content"])
 
 
+class TestLspWorkspaceSymbol:
+    async def test_returns_workspace_symbol_result(self) -> None:
+        mock_client = MagicMock()
+        mock_client.workspace_symbol = AsyncMock(return_value=[
+            {"name": "foo", "kind": 12, "location": {"uri": "file:///test.scm", "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}}}}
+        ])
+        server_module._client = mock_client
+
+        result = await server_module.lsp_workspace_symbol("foo")
+        assert result["content"] == [
+            {"name": "foo", "kind": 12, "location": {"uri": "file:///test.scm", "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}}}}
+        ]
+        mock_client.workspace_symbol.assert_awaited_once_with("foo")
+
+    async def test_returns_error_on_lsp_failure(self) -> None:
+        mock_client = MagicMock()
+        mock_client.workspace_symbol = AsyncMock(side_effect=LspError(-32600, "Invalid params"))
+        server_module._client = mock_client
+
+        result = await server_module.lsp_workspace_symbol("foo")
+        assert result["content"]["error"] is True
+        assert "note" in result["content"]
+
+
 class TestLspResultWrappers:
     def test_lsp_result_with_none(self) -> None:
         result = server_module._lsp_result(None)
-        assert "No result" in str(result["content"])
+        assert result["content"]["result"] is None
+        assert "No result" in result["content"]["note"]
 
     def test_lsp_result_with_data(self) -> None:
         result = server_module._lsp_result({"key": "value"})
