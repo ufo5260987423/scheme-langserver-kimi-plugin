@@ -29,7 +29,21 @@ Kimi is expected to treat LSP output as a **reference**, cross-check it against 
 
 ## Installation
 
-### Via Nix (recommended for NixOS)
+### Via PyPI (any OS)
+
+Requires Python 3.12+ and a local [scheme-langserver](https://github.com/ufo5260987423/scheme-langserver) executable.
+
+```bash
+pip install scheme-langserver-bridge
+```
+
+Or with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv pip install scheme-langserver-bridge
+```
+
+### Via Nix
 
 ```bash
 nix run .#scheme-langserver-bridge
@@ -42,9 +56,7 @@ nix develop
 uv sync --extra dev
 ```
 
-### Via Python (any OS)
-
-Requires Python 3.12+ and a local scheme-langserver executable.
+### From source
 
 ```bash
 git clone <this-repo>

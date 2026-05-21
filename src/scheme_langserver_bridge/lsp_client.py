@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
-from typing import Any, Callable
+from typing import Any
 
 from .config import Config
 
@@ -124,15 +125,13 @@ class LspClient:
         await self._notify("exit", None)
         if self._reader_task:
             self._reader_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._reader_task
-            except asyncio.CancelledError:
-                pass
         if self.process.returncode is None:
             self.process.terminate()
             try:
                 await asyncio.wait_for(self.process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.process.kill()
                 await self.process.wait()
         logger.info("scheme-langserver stopped")
@@ -184,6 +183,7 @@ class LspClient:
         return await self._request(
             "textDocument/completion",
             {"textDocument": {"uri": uri}, "position": {"line": line, "character": character}},
+            timeout=self.config.completion_timeout,
         )
 
     async def definition(self, uri: str, line: int, character: int) -> Any:
@@ -226,7 +226,14 @@ class LspClient:
             {"textDocument": {"uri": uri}},
         )
 
-    async def code_action(self, uri: str, start_line: int, start_char: int, end_line: int, end_char: int) -> Any:
+    async def code_action(
+        self,
+        uri: str,
+        start_line: int,
+        start_char: int,
+        end_line: int,
+        end_char: int,
+    ) -> Any:
         return await self._request(
             "textDocument/codeAction",
             {
@@ -252,7 +259,9 @@ class LspClient:
     # Internal I/O
     # ------------------------------------------------------------------
 
-    async def _request(self, method: str, params: Any) -> Any:
+    async def _request(
+        self, method: str, params: Any, timeout: float | None = None
+    ) -> Any:
         if self.process is None or self.process.stdin is None:
             raise RuntimeError("LSP server not started")
 
@@ -271,11 +280,14 @@ class LspClient:
 
         logger.debug("LSP request -> %s", payload)
 
+        effective_timeout = timeout if timeout is not None else self.config.timeout
         try:
-            return await asyncio.wait_for(future, timeout=self.config.timeout)
-        except asyncio.TimeoutError:
+            return await asyncio.wait_for(future, timeout=effective_timeout)
+        except TimeoutError:
             self._pending.pop(req_id, None)
-            raise LspError(-32001, f"Request '{method}' timed out after {self.config.timeout}s")
+            raise LspError(
+                -32001, f"Request '{method}' timed out after {effective_timeout}s"
+            ) from None
 
     async def _notify(self, method: str, params: Any) -> None:
         if self.process is None or self.process.stdin is None:
@@ -346,7 +358,11 @@ class LspClient:
                 return
             if "error" in msg:
                 err = msg["error"]
-                future.set_exception(LspError(err.get("code", 0), err.get("message", ""), err.get("data")))
+                future.set_exception(
+                    LspError(
+                        err.get("code", 0), err.get("message", ""), err.get("data")
+                    )
+                )
             else:
                 future.set_result(msg.get("result"))
         else:
@@ -356,7 +372,11 @@ class LspClient:
             if method == "textDocument/publishDiagnostics":
                 uri = params.get("uri", "")
                 self._diagnostics[uri] = params.get("diagnostics", [])
-                logger.debug("Received diagnostics for %s: %d items", uri, len(self._diagnostics[uri]))
+                logger.debug(
+                    "Received diagnostics for %s: %d items",
+                    uri,
+                    len(self._diagnostics[uri]),
+                )
             else:
                 logger.debug("Unhandled notification: %s", method)
 

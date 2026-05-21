@@ -18,6 +18,7 @@ class Config:
     top_environment: str = "R6RS"
     debug: str = "disable"
     timeout: float = 30.0
+    completion_timeout: float = 30.0
 
     @classmethod
     def from_env(cls) -> Config:
@@ -34,15 +35,17 @@ class Config:
             top_environment=os.environ.get("SCHEME_LANGSERVER_TOP_ENVIRONMENT", "R6RS"),
             debug=os.environ.get("SCHEME_LANGSERVER_DEBUG", "disable"),
             timeout=float(os.environ.get("SCHEME_LANGSERVER_TIMEOUT", "30.0")),
+            completion_timeout=float(
+                os.environ.get("SCHEME_LANGSERVER_COMPLETION_TIMEOUT", "30.0")
+            ),
         )
 
     @staticmethod
     def _find_langserver() -> str:
         """Discover scheme-langserver executable."""
         # 1. Environment variable
-        if path := os.environ.get("SCHEME_LANGSERVER_PATH"):
-            if Path(path).exists():
-                return str(Path(path).resolve())
+        if (path := os.environ.get("SCHEME_LANGSERVER_PATH")) and Path(path).exists():
+            return str(Path(path).resolve())
 
         # 2. PATH
         for name in ("scheme-langserver", "run"):
@@ -65,19 +68,18 @@ class Config:
         )
 
     def build_cmd(self, root_dir: str) -> list[str]:
-        """Build the command to launch scheme-langserver."""
+        """Build the command to launch scheme-langserver.
+
+        scheme-langserver expects positional arguments:
+            <log-path> <multi-thread> <type-inference>
+        Not flag-style arguments.
+        """
+        log_path = self.log_path or str(Path(root_dir) / ".scheme-langserver.log")
         cmd = [
             self.langserver_path,
-            "-l",
-            self.log_path or str(Path(root_dir) / ".scheme-langserver.log"),
-            "-m",
+            log_path,
             self.multi_thread,
-            "-t",
             self.type_inference,
-            "-e",
-            self.top_environment,
-            "-d",
-            self.debug,
         ]
         return cmd
 

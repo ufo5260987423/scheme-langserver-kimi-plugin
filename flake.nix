@@ -7,6 +7,43 @@
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+
+      # Build the Python package for a given system
+      mkPackage = system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        pkgs.python313Packages.buildPythonApplication {
+          pname = "scheme-langserver-bridge";
+          version = "0.1.0";
+          pyproject = true;
+
+          src = self;
+
+          build-system = [ pkgs.python313Packages.hatchling ];
+
+          propagatedBuildInputs = [
+            pkgs.python313Packages.mcp
+          ];
+
+          nativeCheckInputs = [
+            pkgs.python313Packages.pytest
+            pkgs.python313Packages.pytest-asyncio
+          ];
+
+          # We don't have scheme-langserver in the check environment,
+          # so skip integration tests that require it.
+          pytestFlagsArray = [
+            "-k"
+            "not integration"
+          ];
+
+          meta = {
+            description = "MCP bridge for scheme-langserver to assist Kimi with Scheme code";
+            license = pkgs.lib.licenses.mit;
+            mainProgram = "scheme-langserver-bridge";
+          };
+        };
     in
     {
       devShells = forAllSystems (system:
@@ -34,16 +71,20 @@
           };
         });
 
-      packages = forAllSystems (system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          pythonEnv = pkgs.python313;
-        in
-        {
-          default = pkgs.writeShellScriptBin "scheme-langserver-bridge" ''
-            export PYTHONPATH="${self}/src:$PYTHONPATH"
-            exec ${pythonEnv}/bin/python3 -m scheme_langserver_bridge "$@"
-          '';
-        });
+      packages = forAllSystems (system: {
+        default = mkPackage system;
+        scheme-langserver-bridge = mkPackage system;
+      });
+
+      apps = forAllSystems (system: {
+        default = {
+          type = "app";
+          program = "${self.packages.${system}.default}/bin/scheme-langserver-bridge";
+        };
+        scheme-langserver-bridge = {
+          type = "app";
+          program = "${self.packages.${system}.scheme-langserver-bridge}/bin/scheme-langserver-bridge";
+        };
+      });
     };
 }

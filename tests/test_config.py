@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -18,12 +17,12 @@ class TestConfig:
         )
         cmd = config.build_cmd("/project/root")
         assert cmd[0] == "/usr/bin/scheme-langserver"
-        assert "-l" in cmd
-        assert "/tmp/test.log" in cmd
-        assert "-m" in cmd
-        assert "enable" in cmd
-        assert "-e" in cmd
-        assert "R6RS" in cmd
+        # scheme-langserver expects positional arguments:
+        # <log-path> <multi-thread> <type-inference>
+        assert cmd[1] == "/tmp/test.log"
+        assert cmd[2] == "enable"
+        assert cmd[3] == "enable"
+        assert len(cmd) == 4
 
     def test_build_cmd_custom_options(self) -> None:
         config = Config(
@@ -35,11 +34,14 @@ class TestConfig:
             debug="enable",
         )
         cmd = config.build_cmd("/project/root")
-        assert "disable" in cmd
-        assert "R7RS" in cmd
-        assert "enable" in cmd  # debug=enable
+        assert cmd[1].endswith(".scheme-langserver.log")
+        assert cmd[2] == "disable"
+        assert cmd[3] == "disable"
+        assert len(cmd) == 4
 
-    def test_find_langserver_from_env(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_find_langserver_from_env(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         fake_bin = tmp_path / "scheme-langserver" / "run"
         fake_bin.parent.mkdir(parents=True, exist_ok=True)
         fake_bin.touch()

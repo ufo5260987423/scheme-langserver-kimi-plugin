@@ -3,7 +3,22 @@ name = "scheme-langserver-bridge"
 version = "0.1.0"
 description = "MCP bridge for scheme-langserver to assist Kimi with Scheme code"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
+authors = [
+    { name = "scheme-langserver-bridge contributors" },
+]
+keywords = ["mcp", "lsp", "scheme", "langserver", "kimi"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "mcp>=1.12.0",
 ]
@@ -14,6 +29,14 @@ dev = [
     "ruff>=0.6.0",
     "pyright>=1.1.0",
 ]
+
+[project.scripts]
+scheme-langserver-bridge = "scheme_langserver_bridge.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/scheme-langserver/scheme-langserver-bridge"
+Repository = "https://github.com/scheme-langserver/scheme-langserver-bridge"
+Issues = "https://github.com/scheme-langserver/scheme-langserver-bridge/issues"
 
 [build-system]
 requires = ["hatchling"]
@@ -36,9 +59,13 @@ asyncio_mode = "auto"
 include = ["src"]
 pythonVersion = "3.12"
 strict = ["src/scheme_langserver_bridge"]
+venvPath = "."
+venv = ".venv"
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.409",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
+    "ruff>=0.15.13",
 ]

@@ -9,12 +9,14 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from .config import Config
+from .document_sync import DocumentManager
 from .lsp_client import LspClient, LspError
 
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("scheme-langserver-bridge")
 _client: LspClient | None = None
+_doc_manager: DocumentManager | None = None
 
 
 # ------------------------------------------------------------------
@@ -32,6 +34,14 @@ def _ensure_client() -> LspClient:
             "LSP server not initialized. Call lsp_initialize first."
         )
     return _client
+
+
+def _ensure_doc_manager() -> DocumentManager:
+    if _doc_manager is None:
+        raise RuntimeError(
+            "Document manager not initialized. Call lsp_initialize first."
+        )
+    return _doc_manager
 
 
 def _lsp_result(result: Any) -> dict[str, Any]:
@@ -83,7 +93,7 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
     directory so the language server can resolve imports and analyze
     the codebase.
     """
-    global _client
+    global _client, _doc_manager
     if _client is not None:
         return {
             "content": {
@@ -94,6 +104,7 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
 
     config = Config.from_env()
     _client = LspClient(config)
+    _doc_manager = DocumentManager(_client)
     try:
         result = await _client.start(root_dir)
         return {
@@ -105,18 +116,20 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
         }
     except Exception as exc:
         _client = None
+        _doc_manager = None
         return _lsp_error(exc)
 
 
 @mcp.tool()
 async def lsp_shutdown() -> dict[str, Any]:
     """Gracefully shut down the scheme-langserver connection."""
-    global _client
+    global _client, _doc_manager
     if _client is None:
         return {"content": {"warning": "LSP server was not running."}}
     try:
         await _client.stop()
         _client = None
+        _doc_manager = None
         return {"content": {"shutdown": True}}
     except Exception as exc:
         return _lsp_error(exc)
@@ -134,7 +147,7 @@ async def lsp_open(file_path: str, language_id: str = "scheme") -> dict[str, Any
     The server needs to know file contents before it can provide
     hover, completion, or diagnostics for that file.
     """
-    client = _ensure_client()
+    doc_mgr = _ensure_doc_manager()
     try:
         text = Path(file_path).read_text(encoding="utf-8")
     except Exception as exc:
@@ -147,7 +160,7 @@ async def lsp_open(file_path: str, language_id: str = "scheme") -> dict[str, Any
 
     uri = _file_uri(file_path)
     try:
-        await client.did_open(uri, language_id, 1, text)
+        await doc_mgr.open(uri, language_id, text)
         return {"content": {"opened": uri, "lines": text.count("\n") + 1}}
     except Exception as exc:
         return _lsp_error(exc)
@@ -160,10 +173,10 @@ async def lsp_change(file_path: str, text: str) -> dict[str, Any]:
     Send the new full text of the file. This keeps the server's
     internal state in sync with the actual file contents.
     """
-    client = _ensure_client()
+    doc_mgr = _ensure_doc_manager()
     uri = _file_uri(file_path)
     try:
-        await client.did_change(uri, 1, text)
+        await doc_mgr.change(uri, text)
         return {"content": {"changed": uri, "lines": text.count("\n") + 1}}
     except Exception as exc:
         return _lsp_error(exc)
@@ -172,10 +185,10 @@ async def lsp_change(file_path: str, text: str) -> dict[str, Any]:
 @mcp.tool()
 async def lsp_close(file_path: str) -> dict[str, Any]:
     """Close a file in the language server."""
-    client = _ensure_client()
+    doc_mgr = _ensure_doc_manager()
     uri = _file_uri(file_path)
     try:
-        await client.did_close(uri)
+        await doc_mgr.close(uri)
         return {"content": {"closed": uri}}
     except Exception as exc:
         return _lsp_error(exc)
@@ -217,6 +230,22 @@ async def lsp_complete(file_path: str, line: int, character: int) -> dict[str, A
     try:
         result = await client.completion(uri, line, character)
         return _lsp_result(result)
+    except LspError as exc:
+        if exc.code == -32001 and "timed out" in exc.message:
+            return {
+                "content": {
+                    "error": True,
+                    "message": (
+                        "completion 请求超时，scheme-langserver 的补全功能"
+                        "在当前位置响应较慢"
+                    ),
+                    "note": (
+                        "scheme-langserver 的代码补全在某些位置可能需要较长时间。"
+                        "你可以尝试在其他位置请求补全，或者继续基于已有知识编写代码。"
+                    ),
+                }
+            }
+        return _lsp_error(exc)
     except Exception as exc:
         return _lsp_error(exc)
 
