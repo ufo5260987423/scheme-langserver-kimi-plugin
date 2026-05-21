@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from scheme_langserver_bridge.config import Config
+from scheme_langserver_bridge.config import Config, _find_akku_libdirs
 
 
 class TestConfig:
@@ -101,3 +101,43 @@ class TestConfig:
         monkeypatch.setenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", "not_a_number")
         config = Config.from_env()
         assert config.max_memory_mb == 1024
+
+
+class TestFindAkkuLibdirs:
+    def test_no_akku_returns_empty(self, tmp_path: Path) -> None:
+        assert _find_akku_libdirs(str(tmp_path)) == []
+
+    def test_akku_dir_only(self, tmp_path: Path) -> None:
+        (tmp_path / ".akku").mkdir()
+        result = _find_akku_libdirs(str(tmp_path))
+        assert str(tmp_path / ".akku") in result
+
+    def test_akku_with_subdirs(self, tmp_path: Path) -> None:
+        akku = tmp_path / ".akku"
+        akku.mkdir()
+        (akku / "lib").mkdir()
+        (akku / "src").mkdir()
+        (akku / "vendor").mkdir()
+        result = _find_akku_libdirs(str(tmp_path))
+        assert str(akku) in result
+        assert str(akku / "lib") in result
+        assert str(akku / "src") in result
+        assert str(akku / "vendor") in result
+
+    def test_akku_manifest_adds_lib(self, tmp_path: Path) -> None:
+        (tmp_path / "Akku.manifest").touch()
+        (tmp_path / ".akku").mkdir()
+        (tmp_path / ".akku" / "lib").mkdir()
+        result = _find_akku_libdirs(str(tmp_path))
+        assert str(tmp_path / ".akku" / "lib") in result
+
+    def test_existing_chezschemelibdirs_preserved(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        akku = tmp_path / ".akku"
+        akku.mkdir()
+        (akku / "lib").mkdir()
+        monkeypatch.setenv("CHEZSCHEMELIBDIRS", "/existing/path")
+        # This test is for lsp_client.start(); config only provides the helper.
+        # We verify the helper returns the expected directories.
+        result = _find_akku_libdirs(str(tmp_path))
+        assert str(akku) in result
+        assert str(akku / "lib") in result

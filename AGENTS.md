@@ -31,6 +31,7 @@ scheme-langserver 是基于 Chez Scheme 的静态分析器，能提供以下 LLM
 | `textDocument/publishDiagnostics` | 获取**语法错误**和**语义错误**的实时列表 | Kimi 生成或修改代码后，立即知道是否有错误，及时在回复中修正 |
 | `textDocument/rename` | 获取安全重命名所需的**所有修改位置**（跨文件） | Kimi 执行重命名重构时，能一次性给出所有需要改动的位置，保证一致性 |
 | `textDocument/signatureHelp` | 获取函数调用的**参数列表**和**参数类型** | Kimi 写函数调用时，知道每个参数应该是什么类型，减少类型不匹配的错误 |
+| `workspace/symbol` | 获取工作区中所有匹配的符号 | Kimi 需要在整个项目中搜索某个函数或变量时，快速定位 |
 | 类型推断（实验性） | 获取复杂表达式的**推导类型** | Kimi 分析高阶函数、宏展开后的表达式时，有类型信息作为依据，推理更可靠 |
 
 ### scheme-langserver 的能力边界（Kimi 必须知道）
@@ -137,12 +138,11 @@ Kimi 评估当前任务是否需要精确代码信息
 ```
 scheme_langserver_bridge/
 ├── __init__.py
-├── server.py          # MCP 服务器主入口 (FastMCP / 官方 SDK)
-├── lsp_client.py      # LSP 客户端：管理 scheme-langserver 子进程 + JSON-RPC
+├── __main__.py        # python3 -m 入口 / CLI 入口
+├── server.py          # MCP 服务器主入口 (FastMCP)
+├── lsp_client.py      # LSP 客户端：管理 scheme-langserver 子进程 + JSON-RPC + 资源限制
 ├── document_sync.py   # 文档同步：将文件变更通知 LSP 服务器
-├── tools.py           # MCP Tools 定义和实现
-├── resources.py       # MCP Resources 定义（可选）
-└── config.py          # 配置管理：LSP 服务器路径、启动参数等
+└── config.py          # 配置管理：LSP 服务器路径、启动参数、环境变量解析
 ```
 
 ### 协议映射
@@ -153,7 +153,7 @@ MCP Tools ↔ LSP Methods 映射：
 |---------|-----------|------|
 | `lsp_initialize` | `initialize` | 初始化 LSP 连接，传入项目根目录 |
 | `lsp_open` | `textDocument/didOpen` | 打开文件，通知 LSP 文件内容 |
-| `lsp_change` | `textDocument/didChange` | 文件内容变更（增量或全量） |
+| `lsp_change` | `textDocument/didChange` | 文件内容变更（全量同步） |
 | `lsp_hover` | `textDocument/hover` | 获取光标处符号信息 |
 | `lsp_complete` | `textDocument/completion` | 代码补全 |
 | `lsp_definition` | `textDocument/definition` | 跳转到定义 |
@@ -161,6 +161,9 @@ MCP Tools ↔ LSP Methods 映射：
 | `lsp_diagnostics` | `textDocument/publishDiagnostics` | 获取诊断信息 |
 | `lsp_rename` | `textDocument/rename` | 重命名符号 |
 | `lsp_signature` | `textDocument/signatureHelp` | 函数签名帮助 |
+| `lsp_document_symbol` | `textDocument/documentSymbol` | 文件内符号列表 |
+| `lsp_workspace_symbol` | `workspace/symbol` | 工作区符号搜索 |
+| `lsp_code_action` | `textDocument/codeAction` | 代码动作 / 快速修复 |
 | `lsp_close` | `textDocument/didClose` | 关闭文件 |
 | `lsp_shutdown` | `shutdown` | 优雅关闭 LSP 服务器 |
 
@@ -169,9 +172,9 @@ MCP Tools ↔ LSP Methods 映射：
 ### 语言与工具
 
 - **Bridge 实现语言**：Python 3.12+
-- **MCP SDK**：优先使用 `mcp` 官方 Python SDK（`pip install mcp`），次选 `fastmcp`
+- **MCP SDK**：使用 `mcp` 官方 Python SDK（`pip install mcp`），通过 `FastMCP` 构建服务器
 - **LSP 通信**：自研轻量 JSON-RPC 客户端（scheme-langserver 只走 stdio，不需要完整 LSP 库）
-- **依赖管理**：Python 依赖通过 `pyproject.toml` + `uv` 或 `poetry` 管理，同时必须在 `flake.nix` 中声明
+- **依赖管理**：Python 依赖通过 `pyproject.toml` + `uv` 管理，同时在 `flake.nix` 中声明
 - **代码风格**：`ruff` 格式化 + `ruff` lint，`pyright` 类型检查
 
 ### 代码组织
@@ -179,22 +182,23 @@ MCP Tools ↔ LSP Methods 映射：
 - 所有 Python 代码放在 `src/scheme_langserver_bridge/` 下
 - 测试放在 `tests/` 下，使用 `pytest`
 - 脚本放在 `scripts/` 下
-- Nix 配置放在项目根目录：`flake.nix`、`flake.lock`、`default.nix`（如有需要）
+- Nix 配置放在项目根目录：`flake.nix`、`flake.lock`
 
 ### 配置规范
 
 - **LSP 服务器发现优先级**：
   1. 环境变量 `SCHEME_LANGSERVER_PATH`
-  2. Nix 包装器中的 `scheme-langserver`（如果在 PATH 中）
-  3. 项目内的 `./scheme-langserver/run`（本地开发回退）
-- **日志路径**：默认使用系统临时目录（`$TMPDIR` 或 `/tmp`），可通过环境变量覆盖
-- **项目根目录**：通过 `initialize` 工具参数传入，或自动探测 `.git` 目录
+  2. PATH 中的 `scheme-langserver` 或 `run`
+  3. 已知本地开发路径（项目内 `./scheme-langserver/run`、上级目录、`~/Documents/workspace/scheme-langserver/run`）
+- **日志路径**：默认使用当前工作目录下的 `.scheme-langserver.log`，可通过环境变量覆盖
+- **项目根目录**：通过 `lsp_initialize` 工具参数传入
 
 ### 错误处理
 
 - LSP 服务器崩溃或返回错误时，MCP 工具必须返回友好的错误信息，不能抛未处理异常
-- 必须实现 LSP 服务器进程的健康检查和自动重启
-- 所有 LSP 通信超时必须可配置（默认 30 秒）
+- 必须实现 LSP 服务器进程的健康检查和自动重启（通过 `lsp_shutdown` + `lsp_initialize`）
+- 所有 LSP 通信超时必须可配置（默认 30 秒，补全单独可配）
+- 子进程必须设置硬资源限制（内存、CPU）防止失控
 
 ## 构建与运行
 
@@ -205,7 +209,7 @@ MCP Tools ↔ LSP Methods 映射：
 nix develop
 
 # 安装 Python 依赖
-uv sync
+uv sync --extra dev
 
 # 运行测试
 pytest
@@ -240,7 +244,7 @@ kimi mcp add --transport stdio scheme-langserver -- \
 ### NixOS 特有运行方式
 
 ```bash
-# 通过 nix run 直接运行（需要 flake 中定义 apps.default）
+# 通过 nix run 直接运行
 nix run .#scheme-langserver-bridge
 
 # 或通过 nix develop 进入环境后运行
@@ -252,13 +256,14 @@ python3 -m scheme_langserver_bridge
 
 ### 单元测试
 
-- `tests/test_lsp_client.py`：测试 JSON-RPC 通信、进程管理、超时处理
-- `tests/test_tools.py`：测试每个 MCP tool 的参数校验和响应格式
+- `tests/test_lsp_client.py`：测试 JSON-RPC 通信、并发写锁、超时清理、崩溃恢复、资源限制、异常输入处理
+- `tests/test_server.py`：测试每个 MCP tool 的参数校验和响应格式
 - `tests/test_document_sync.py`：测试文件同步逻辑
+- `tests/test_config.py`：测试配置解析和环境变量读取
 
 ### 集成测试
 
-- `tests/integration/`：需要真实 scheme-langserver 进程的测试
+- `tests/test_integration.py`：需要真实 scheme-langserver 进程的测试
 - 使用一个最小的 Scheme 项目（`tests/fixtures/scheme-project/`）作为测试靶子
 - CI 必须在 NixOS 环境下运行（可通过 GitHub Actions + Nix 实现）
 
@@ -271,32 +276,39 @@ python3 -m scheme_langserver_bridge
 - [ ] `lsp_diagnostics` 能报告语法错误
 - [ ] Kimi 实际对话中能调用这些工具并基于结果回答
 
-## 文件清单（规划）
+## 文件清单
 
 ```
 .
 ├── AGENTS.md                           # 本文件
 ├── README.md                           # 面向用户的说明
+├── CHANGELOG.md                        # 变更日志
+├── LICENSE                             # MIT 许可证
 ├── flake.nix                           # Nix Flake 定义
 ├── flake.lock                          # Nix 依赖锁定
 ├── pyproject.toml                      # Python 项目配置
-├── uv.lock / poetry.lock               # Python 依赖锁定
+├── uv.lock                             # Python 依赖锁定 (uv)
+├── Makefile                            # 常用命令快捷方式
 ├── src/
 │   └── scheme_langserver_bridge/
 │       ├── __init__.py
-│       ├── __main__.py                 # python3 -m 入口
+│       ├── __main__.py                 # python3 -m 入口 / CLI 入口
 │       ├── server.py                   # MCP 服务器
 │       ├── lsp_client.py               # LSP 客户端
 │       ├── document_sync.py            # 文档同步
-│       ├── tools.py                    # MCP Tools
-│       ├── resources.py                # MCP Resources
 │       └── config.py                   # 配置管理
 ├── tests/
 │   ├── fixtures/
 │   │   └── scheme-project/             # 测试用 Scheme 项目
+│   │       └── test.scm
+│   ├── test_config.py
+│   ├── test_document_sync.py
+│   ├── test_integration.py
 │   ├── test_lsp_client.py
-│   ├── test_tools.py
-│   └── test_document_sync.py
+│   ├── test_lsp_client_cleanup.py
+│   ├── test_lsp_client_concurrency.py
+│   ├── test_lsp_client_malformed.py
+│   └── test_server.py
 └── scripts/
     └── test-lsp-connection.py          # 手动测试 LSP 连通性
 ```

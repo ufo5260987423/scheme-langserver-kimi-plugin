@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -148,6 +149,153 @@ class TestLspWorkspaceSymbol:
         result = await server_module.lsp_workspace_symbol("foo")
         assert result["content"]["error"] is True
         assert "note" in result["content"]
+
+
+class TestInferRootDir:
+    def test_infer_root_dir_from_git(self, tmp_path: Path) -> None:
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        file_path = tmp_path / "src" / "test.scm"
+        file_path.parent.mkdir()
+        file_path.write_text("(define x 1)")
+
+        result = server_module._infer_root_dir(str(file_path))
+        assert result == str(tmp_path)
+
+    def test_infer_root_dir_fallback_to_parent(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "test.scm"
+        file_path.write_text("(define x 1)")
+
+        result = server_module._infer_root_dir(str(file_path))
+        assert result == str(tmp_path)
+
+
+class TestAutoInitialize:
+    async def test_auto_initialize_on_hover(self, tmp_path: Path) -> None:
+        test_file = tmp_path / "test.scm"
+        test_file.write_text("(define x 1)")
+
+        mock_client = MagicMock()
+        mock_client.hover = AsyncMock(return_value={"contents": "test hover"})
+
+        async def mock_initialize(root_dir: str):
+            server_module._client = mock_client
+            server_module._doc_manager = MagicMock()
+            return {"content": {"initialized": True}}
+
+        with patch("scheme_langserver_bridge.server.lsp_initialize", side_effect=mock_initialize):
+            result = await server_module.lsp_hover(str(test_file), 0, 7)
+
+        assert result["content"] == {"contents": "test hover"}
+        mock_client.hover.assert_awaited_once()
+
+    async def test_auto_initialize_failure_returns_error(self, tmp_path: Path) -> None:
+        test_file = tmp_path / "test.scm"
+        test_file.write_text("(define x 1)")
+
+        with patch(
+            "scheme_langserver_bridge.server.lsp_initialize",
+            return_value={"content": {"error": True, "message": "init failed"}},
+        ):
+            result = await server_module.lsp_hover(str(test_file), 0, 7)
+
+        assert result["content"]["error"] is True
+        assert "Auto-initialization failed" in result["content"]["message"]
+
+    async def test_auto_initialize_on_workspace_symbol(self) -> None:
+        mock_client = MagicMock()
+        mock_client.workspace_symbol = AsyncMock(return_value=[{"name": "foo"}])
+
+        async def mock_initialize(root_dir: str):
+            server_module._client = mock_client
+            server_module._doc_manager = MagicMock()
+            return {"content": {"initialized": True}}
+
+        with patch("scheme_langserver_bridge.server.lsp_initialize", side_effect=mock_initialize):
+            result = await server_module.lsp_workspace_symbol("foo")
+
+        assert result["content"] == [{"name": "foo"}]
+        mock_client.workspace_symbol.assert_awaited_once_with("foo")
+
+    async def test_auto_initialize_concurrent(self, tmp_path: Path) -> None:
+        test_file = tmp_path / "test.scm"
+        test_file.write_text("(define x 1)")
+
+        mock_client = MagicMock()
+        mock_client.hover = AsyncMock(return_value={"contents": "test hover"})
+
+        call_count = 0
+
+        async def mock_initialize(root_dir: str):
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.05)
+            server_module._client = mock_client
+            server_module._doc_manager = MagicMock()
+            return {"content": {"initialized": True}}
+
+        with patch("scheme_langserver_bridge.server.lsp_initialize", side_effect=mock_initialize):
+            results = await asyncio.gather(
+                server_module.lsp_hover(str(test_file), 0, 7),
+                server_module.lsp_hover(str(test_file), 0, 7),
+            )
+
+        assert call_count == 1
+        assert all(r["content"] == {"contents": "test hover"} for r in results)
+        assert mock_client.hover.await_count == 2
+
+
+class TestAutoReinitialize:
+    async def test_auto_reinitialize_after_crash(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        crashed_client = MagicMock()
+        crashed_client._crashed = True
+        server_module._client = crashed_client
+
+        shutdown_called = []
+        init_called = []
+
+        async def mock_shutdown():
+            shutdown_called.append(True)
+            server_module._client = None
+            server_module._doc_manager = None
+
+        async def mock_initialize(root_dir: str):
+            init_called.append(root_dir)
+            new_client = MagicMock()
+            new_client._crashed = False
+            server_module._client = new_client
+            return {"content": {"initialized": True}}
+
+        monkeypatch.setattr(server_module, "lsp_shutdown", mock_shutdown)
+        monkeypatch.setattr(server_module, "lsp_initialize", mock_initialize)
+
+        test_file = tmp_path / "test.scm"
+        test_file.write_text("(define x 1)")
+
+        client = await server_module._ensure_initialized(str(test_file))
+        assert shutdown_called
+        assert init_called
+        assert client is server_module._client
+        assert client._crashed is False
+
+    async def test_no_reinit_when_healthy(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        healthy_client = MagicMock()
+        healthy_client._crashed = False
+        server_module._client = healthy_client
+
+        init_called = []
+
+        async def mock_initialize(root_dir: str):
+            init_called.append(root_dir)
+
+        monkeypatch.setattr(server_module, "lsp_initialize", mock_initialize)
+
+        test_file = tmp_path / "test.scm"
+        test_file.write_text("(define x 1)")
+
+        client = await server_module._ensure_initialized(str(test_file))
+        assert client is healthy_client
+        assert not init_called
 
 
 class TestLspResultWrappers:

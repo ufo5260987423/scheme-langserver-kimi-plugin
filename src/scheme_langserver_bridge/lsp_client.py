@@ -61,7 +61,21 @@ class LspClient:
             self.config.max_cpu_seconds,
         )
 
-        spawn_kwargs: dict[str, Any] = {}
+        # Detect Akku environment and set CHEZSCHEMELIBDIRS
+        import os
+        from .config import _find_akku_libdirs
+
+        env = os.environ.copy()
+        akku_dirs = _find_akku_libdirs(root_dir)
+        if akku_dirs:
+            existing = env.get("CHEZSCHEMELIBDIRS", "")
+            if existing:
+                env["CHEZSCHEMELIBDIRS"] = ":".join(akku_dirs) + ":" + existing
+            else:
+                env["CHEZSCHEMELIBDIRS"] = ":".join(akku_dirs)
+            logger.info("Set CHEZSCHEMELIBDIRS=%s", env["CHEZSCHEMELIBDIRS"])
+
+        spawn_kwargs: dict[str, Any] = {"env": env}
         if _HAS_RESOURCE:
             spawn_kwargs["preexec_fn"] = functools.partial(
                 _set_resource_limits,

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from .config import Config
+from .config import Config, _find_akku_libdirs
 from .document_sync import DocumentManager
 from .lsp_client import LspClient, LspError
 
@@ -17,6 +19,7 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("scheme-langserver-bridge")
 _client: LspClient | None = None
 _doc_manager: DocumentManager | None = None
+_init_lock = asyncio.Lock()
 
 
 # ------------------------------------------------------------------
@@ -26,6 +29,40 @@ _doc_manager: DocumentManager | None = None
 
 def _file_uri(path: str) -> str:
     return "file://" + str(Path(path).absolute())
+
+
+def _infer_root_dir(file_path: str) -> str:
+    """Infer project root directory from a file path."""
+    path = Path(file_path).resolve()
+    for p in [path] + list(path.parents):
+        if (p / ".akku").exists() or (p / "Akku.manifest").exists():
+            return str(p)
+    for p in [path] + list(path.parents):
+        if (p / ".git").exists():
+            return str(p)
+    return str(path.parent if path.is_file() else path)
+
+
+async def _ensure_initialized(file_path: str | None = None) -> LspClient:
+    """Ensure LSP client is initialized, auto-restarting if it crashed."""
+    crashed = getattr(_client, "_crashed", False) is True
+    if _client is None or crashed:
+        async with _init_lock:
+            crashed = getattr(_client, "_crashed", False) is True
+            if _client is None or crashed:
+                if crashed:
+                    logger.info("LSP server crashed, shutting down before restart...")
+                    try:
+                        await lsp_shutdown()
+                    except Exception as exc:
+                        logger.warning("lsp_shutdown during auto-restart failed: %s", exc)
+                root_dir = _infer_root_dir(file_path or os.getcwd())
+                result = await lsp_initialize(root_dir)
+                if result.get("content", {}).get("error"):
+                    raise RuntimeError(f"Auto-initialization failed: {result['content']}")
+    if _client is None:
+        raise RuntimeError("LSP server not initialized. Call lsp_initialize first.")
+    return _client
 
 
 def _ensure_client() -> LspClient:
@@ -99,13 +136,22 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
     the codebase.
     """
     global _client, _doc_manager
-    if _client is not None:
+    crashed = getattr(_client, "_crashed", False) is True
+    if _client is not None and not crashed:
         return {
             "content": {
                 "warning": "LSP server already initialized.",
                 "previous_root": root_dir,
             }
         }
+
+    if _client is not None and crashed:
+        try:
+            await _client.stop()
+        except Exception as exc:
+            logger.warning("Cleanup of crashed client failed: %s", exc)
+        _client = None
+        _doc_manager = None
 
     config = Config.from_env()
     _client = LspClient(config)
@@ -213,9 +259,9 @@ async def lsp_hover(file_path: str, line: int, character: int) -> dict[str, Any]
         line: Zero-based line number.
         character: Zero-based character (column) position.
     """
-    client = _ensure_client()
     uri = _file_uri(file_path)
     try:
+        client = await _ensure_initialized(file_path)
         result = await client.hover(uri, line, character)
         return _lsp_result(result)
     except Exception as exc:
@@ -230,9 +276,9 @@ async def lsp_complete(file_path: str, line: int, character: int) -> dict[str, A
     local bindings (let, lambda parameters) that may not be obvious
     from a simple text search.
     """
-    client = _ensure_client()
     uri = _file_uri(file_path)
     try:
+        client = await _ensure_initialized(file_path)
         result = await client.completion(uri, line, character)
         return _lsp_result(result)
     except LspError as exc:
@@ -261,9 +307,9 @@ async def lsp_definition(file_path: str, line: int, character: int) -> dict[str,
 
     Returns file URI, line, and column where the identifier is defined.
     """
-    client = _ensure_client()
     uri = _file_uri(file_path)
     try:
+        client = await _ensure_initialized(file_path)
         result = await client.definition(uri, line, character)
         return _lsp_result(result)
     except Exception as exc:
@@ -280,9 +326,9 @@ async def lsp_references(
         include_declaration: Whether to include the definition site
             in the results.
     """
-    client = _ensure_client()
     uri = _file_uri(file_path)
     try:
+        client = await _ensure_initialized(file_path)
         result = await client.references(uri, line, character, include_declaration)
         return _lsp_result(result)
     except Exception as exc:
@@ -296,9 +342,9 @@ async def lsp_rename(file_path: str, line: int, character: int, new_name: str) -
     Returns a set of text document edits that can be applied to
     safely rename the symbol across all files.
     """
-    client = _ensure_client()
     uri = _file_uri(file_path)
     try:
+        client = await _ensure_initialized(file_path)
         result = await client.rename(uri, line, character, new_name)
         return _lsp_result(result)
     except Exception as exc:
@@ -312,9 +358,9 @@ async def lsp_signature(file_path: str, line: int, character: int) -> dict[str, 
     Shows parameter names and types for the function being called
     at the given position.
     """
-    client = _ensure_client()
     uri = _file_uri(file_path)
     try:
+        client = await _ensure_initialized(file_path)
         result = await client.signature_help(uri, line, character)
         return _lsp_result(result)
     except Exception as exc:
@@ -328,9 +374,9 @@ async def lsp_document_symbol(file_path: str) -> dict[str, Any]:
     Useful for getting an overview of a file's structure
     (functions, variables, macros, etc.).
     """
-    client = _ensure_client()
     uri = _file_uri(file_path)
     try:
+        client = await _ensure_initialized(file_path)
         result = await client.document_symbol(uri)
         return _lsp_result(result)
     except Exception as exc:
@@ -344,8 +390,8 @@ async def lsp_workspace_symbol(query: str) -> dict[str, Any]:
     Performs a cross-workspace symbol search using the language server.
     Returns all symbols matching the query string across all indexed files.
     """
-    client = _ensure_client()
     try:
+        client = await _ensure_initialized(os.getcwd())
         result = await client.workspace_symbol(query)
         return _lsp_result(result)
     except Exception as exc:
@@ -358,9 +404,9 @@ async def lsp_code_action(
 ) -> dict[str, Any]:
     """Get code actions (quick fixes, refactorings) for a range.
     """
-    client = _ensure_client()
     uri = _file_uri(file_path)
     try:
+        client = await _ensure_initialized(file_path)
         result = await client.code_action(uri, start_line, start_character, end_line, end_character)
         return _lsp_result(result)
     except Exception as exc:
@@ -375,8 +421,8 @@ async def lsp_diagnostics(file_path: str | None = None) -> dict[str, Any]:
         file_path: If provided, returns diagnostics for that file only.
             If omitted, returns diagnostics for all open files.
     """
-    client = _ensure_client()
     try:
+        client = await _ensure_initialized(file_path or os.getcwd())
         uri = _file_uri(file_path) if file_path else None
         result = client.get_diagnostics(uri)
         return _lsp_result(result)

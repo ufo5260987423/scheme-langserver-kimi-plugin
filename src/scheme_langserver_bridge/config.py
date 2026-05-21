@@ -113,6 +113,25 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _find_akku_libdirs(root_dir: str) -> list[str]:
+    """Find Akku library directories under root_dir."""
+    libdirs = []
+    root = Path(root_dir)
+    # Check for .akku directory
+    akku_dir = root / ".akku"
+    if akku_dir.exists():
+        libdirs.append(str(akku_dir))
+        # Common subdirectories inside .akku
+        for sub in ("lib", "src", "vendor"):
+            p = akku_dir / sub
+            if p.exists():
+                libdirs.append(str(p))
+    # Check for Akku.manifest
+    if (root / "Akku.manifest").exists() and akku_dir.exists():
+        libdirs.append(str(akku_dir / "lib"))
+    return libdirs
+
+
 def _which(name: str) -> str | None:
     """Simple which implementation."""
     for path in os.environ.get("PATH", "").split(os.pathsep):

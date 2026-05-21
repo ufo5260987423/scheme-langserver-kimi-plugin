@@ -231,3 +231,82 @@ class TestCleanupMethod:
         assert client._stderr_task.cancelled()
         mock_process.kill.assert_called_once()
         assert client.process is None
+
+
+class TestAkkuEnv:
+    async def test_start_sets_chezschemelibdirs(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        akku = tmp_path / ".akku"
+        akku.mkdir()
+        (akku / "lib").mkdir()
+
+        client = LspClient(MagicMock())
+        mock_process = MagicMock()
+        mock_process.returncode = None
+        mock_process.stdin = MagicMock()
+        mock_process.stdout = MagicMock()
+        mock_process.stderr = MagicMock()
+        mock_process.wait = AsyncMock(return_value=0)
+
+        captured: dict[str, Any] = {}
+
+        async def fake_create_subprocess(*args: Any, **kwargs: Any) -> Any:
+            captured["env"] = kwargs.get("env")
+            return mock_process
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess)
+
+        async def fake_request(self: LspClient, method: str, params: Any) -> Any:
+            return {}
+
+        async def fake_notify(self: LspClient, method: str, params: Any) -> None:
+            pass
+
+        monkeypatch.setattr(LspClient, "_request", fake_request)
+        monkeypatch.setattr(LspClient, "_notify", fake_notify)
+
+        await client.start(str(tmp_path))
+        assert captured["env"] is not None
+        assert "CHEZSCHEMELIBDIRS" in captured["env"]
+        libdirs = captured["env"]["CHEZSCHEMELIBDIRS"].split(":")
+        assert str(akku) in libdirs
+        assert str(akku / "lib") in libdirs
+
+    async def test_start_preserves_existing_chezschemelibdirs(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        akku = tmp_path / ".akku"
+        akku.mkdir()
+        (akku / "lib").mkdir()
+
+        monkeypatch.setenv("CHEZSCHEMELIBDIRS", "/existing/path")
+
+        client = LspClient(MagicMock())
+        mock_process = MagicMock()
+        mock_process.returncode = None
+        mock_process.stdin = MagicMock()
+        mock_process.stdout = MagicMock()
+        mock_process.stderr = MagicMock()
+        mock_process.wait = AsyncMock(return_value=0)
+
+        captured: dict[str, Any] = {}
+
+        async def fake_create_subprocess(*args: Any, **kwargs: Any) -> Any:
+            captured["env"] = kwargs.get("env")
+            return mock_process
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess)
+
+        async def fake_request(self: LspClient, method: str, params: Any) -> Any:
+            return {}
+
+        async def fake_notify(self: LspClient, method: str, params: Any) -> None:
+            pass
+
+        monkeypatch.setattr(LspClient, "_request", fake_request)
+        monkeypatch.setattr(LspClient, "_notify", fake_notify)
+
+        await client.start(str(tmp_path))
+        assert captured["env"] is not None
+        chez = captured["env"]["CHEZSCHEMELIBDIRS"]
+        assert chez.startswith(str(akku))
+        assert "/existing/path" in chez
