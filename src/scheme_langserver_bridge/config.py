@@ -19,6 +19,8 @@ class Config:
     debug: str = "disable"
     timeout: float = 30.0
     completion_timeout: float = 30.0
+    max_memory_mb: int = 1024
+    max_cpu_seconds: int = 180
 
     @classmethod
     def from_env(cls) -> Config:
@@ -38,6 +40,8 @@ class Config:
             completion_timeout=float(
                 os.environ.get("SCHEME_LANGSERVER_COMPLETION_TIMEOUT", "30.0")
             ),
+            max_memory_mb=int(os.environ.get("SCHEME_LANGSERVER_MAX_MEMORY_MB", "1024")),
+            max_cpu_seconds=int(os.environ.get("SCHEME_LANGSERVER_MAX_CPU_SECONDS", "180")),
         )
 
     @staticmethod

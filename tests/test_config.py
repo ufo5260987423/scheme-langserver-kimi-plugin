@@ -57,3 +57,27 @@ class TestConfig:
         config = Config.from_env()
         assert config.log_path is not None
         assert ".scheme-langserver.log" in config.log_path
+
+    def test_resource_limits_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        fake_bin = tmp_path / "run"
+        fake_bin.touch()
+        monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
+        monkeypatch.delenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", raising=False)
+        monkeypatch.delenv("SCHEME_LANGSERVER_MAX_CPU_SECONDS", raising=False)
+        config = Config.from_env()
+        assert config.max_memory_mb == 1024
+        assert config.max_cpu_seconds == 180
+
+    def test_resource_limits_from_env(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        fake_bin = tmp_path / "run"
+        fake_bin.touch()
+        monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
+        monkeypatch.setenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", "512")
+        monkeypatch.setenv("SCHEME_LANGSERVER_MAX_CPU_SECONDS", "60")
+        config = Config.from_env()
+        assert config.max_memory_mb == 512
+        assert config.max_cpu_seconds == 60

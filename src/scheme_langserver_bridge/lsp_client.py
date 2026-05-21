@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import json
 import logging
 from typing import Any
 
 from .config import Config
+
+try:
+    import resource
+
+    _HAS_RESOURCE = True
+except ImportError:
+    _HAS_RESOURCE = False
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +54,26 @@ class LspClient:
         """Launch scheme-langserver and perform LSP initialize handshake."""
         cmd = self.config.build_cmd(root_dir)
         logger.info("Starting scheme-langserver: %s", " ".join(cmd))
+        logger.info(
+            "Resource limits: max_memory=%dMB, max_cpu=%ds",
+            self.config.max_memory_mb,
+            self.config.max_cpu_seconds,
+        )
+
+        spawn_kwargs: dict[str, Any] = {}
+        if _HAS_RESOURCE:
+            spawn_kwargs["preexec_fn"] = functools.partial(
+                _set_resource_limits,
+                self.config.max_memory_mb * 1024 * 1024,
+                self.config.max_cpu_seconds,
+            )
 
         self.process = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            **spawn_kwargs,
         )
 
         self._reader_task = asyncio.create_task(self._read_loop())
@@ -121,11 +143,15 @@ class LspClient:
         if self._shutdown or self.process is None:
             return
         self._shutdown = True
-        try:
-            await self._request("shutdown", None)
-        except Exception as exc:
-            logger.warning("Shutdown request failed: %s", exc)
-        await self._notify("exit", None)
+        if not self._crashed and self.process.returncode is None:
+            try:
+                await self._request("shutdown", None)
+            except Exception as exc:
+                logger.warning("Shutdown request failed: %s", exc)
+            try:
+                await self._notify("exit", None)
+            except Exception as exc:
+                logger.warning("Exit notification failed: %s", exc)
         if self._stderr_task:
             self._stderr_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -303,6 +329,20 @@ class LspClient:
             return await asyncio.wait_for(future, timeout=effective_timeout)
         except TimeoutError:
             self._pending.pop(req_id, None)
+            if self.process and self.process.returncode is None:
+                logger.warning(
+                    "Request '%s' timed out after %.1fs; terminating scheme-langserver",
+                    method,
+                    effective_timeout,
+                )
+                self.process.terminate()
+                try:
+                    await asyncio.wait_for(self.process.wait(), timeout=3.0)
+                except TimeoutError:
+                    logger.warning("scheme-langserver did not terminate; killing")
+                    self.process.kill()
+                    await self.process.wait()
+                self._crashed = True
             raise LspError(
                 -32001, f"Request '{method}' timed out after {effective_timeout}s"
             ) from None
@@ -425,6 +465,19 @@ class LspClient:
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+
+def _set_resource_limits(max_memory_bytes: int, max_cpu_seconds: int) -> None:
+    """Set RLIMIT_AS and RLIMIT_CPU in the child process.
+
+    Called via preexec_fn so it runs in the scheme-langserver child
+    before Chez Scheme starts.
+    """
+    if not _HAS_RESOURCE:
+        return
+    resource.setrlimit(resource.RLIMIT_AS, (max_memory_bytes, max_memory_bytes))
+    resource.setrlimit(resource.RLIMIT_CPU, (max_cpu_seconds, max_cpu_seconds))
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 
 def _path_to_uri(path: str) -> str:
