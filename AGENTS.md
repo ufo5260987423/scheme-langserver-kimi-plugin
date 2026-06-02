@@ -191,12 +191,20 @@ MCP Tools ↔ LSP Methods 映射：
 
 ### 配置规范
 
-- **LSP 服务器发现优先级**：
-  1. 环境变量 `SCHEME_LANGSERVER_PATH`
-  2. PATH 中的 `scheme-langserver` 或 `run`
-  3. 已知本地开发路径（项目内 `./scheme-langserver/run`、上级目录、`~/Documents/workspace/scheme-langserver/run`）
-- **日志路径**：默认使用当前工作目录下的 `.scheme-langserver.log`，可通过环境变量覆盖
+- **配置优先级**（从高到低）：
+  1. 项目配置 `.scheme-langserver.toml` / `.scheme-langserver.json`（位于项目根目录）
+  2. 环境变量
+  3. 内置默认值
+- **项目配置支持字段**：`langserver_path`、`top_environment`、`multi_thread`、`type_inference`、`log_path`、`auto_update`
+- **LSP 服务器发现链**：
+  1. 项目配置中的 `langserver_path`
+  2. 环境变量 `SCHEME_LANGSERVER_PATH`
+  3. PATH 中的 `scheme-langserver` 或 `run`
+  4. 已知本地开发路径（项目内 `./scheme-langserver/run`、上级目录、`~/Documents/workspace/scheme-langserver/run`）
+  5. **自动下载**（当 `auto_update=true` 且平台为 Linux x86_64 glibc 时）：通过 GitHub Release 静态 URL + HEAD 请求检测最新版本，缓存到 `~/.cache/scheme-langserver-bridge/versions/<version>/`
+- **日志路径**：默认使用当前工作目录下的 `.scheme-langserver.log`，可通过环境变量或项目配置覆盖
 - **项目根目录**：通过 `lsp_initialize` 工具参数传入
+- **版本检查缓存**：`~/.cache/scheme-langserver-bridge/version-check.json`，TTL 1 小时
 
 ### 错误处理
 

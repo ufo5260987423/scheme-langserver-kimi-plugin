@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Project-level configuration** via `.scheme-langserver.toml` or `.scheme-langserver.json` in the project root.
+  - Supported fields: `langserver_path`, `top_environment`, `multi_thread`, `type_inference`, `log_path`, `auto_update`.
+  - Configuration priority: project config > environment variables > defaults.
+- **Auto-download** scheme-langserver from GitHub Releases when no local executable is found.
+  - Uses GitHub's static redirect URL (`releases/latest/download/...`) with `HEAD` requests to detect the latest version **without consuming API rate limits**.
+  - Downloads are cached to `~/.cache/scheme-langserver-bridge/versions/<version>/`.
+  - Version-check results are cached with a 1-hour TTL to avoid repeated network requests.
+  - Controlled by `auto_update` in project config or `SCHEME_LANGSERVER_AUTO_UPDATE` env var (default `true`).
+  - Currently supports Linux x86_64 glibc only; other platforms gracefully fall back to manual installation instructions.
 - **Debug report collection** for upstream bug reporting.
   - New module `crash_reporter.py` collects LSP traffic, project snapshots, stderr, and environment metadata.
   - `ready-for-analyse.log` is generated in the exact format consumed by scheme-langserver's replay scripts (`bin/log-debug.sps` / `bin/parallel-log-debug.sps`).

@@ -154,7 +154,11 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
         _client = None
         _doc_manager = None
 
-    config = Config.from_env()
+    try:
+        config = Config.load(root_dir)
+    except Exception as exc:
+        return _lsp_error(exc)
+
     _client = LspClient(config)
     _doc_manager = DocumentManager(_client)
 
@@ -164,13 +168,17 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
 
     try:
         result = await _client.start(root_dir)
-        return {
+        response: dict[str, Any] = {
             "content": {
                 "initialized": True,
                 "server_info": result.get("serverInfo", {}),
                 "capabilities": _summarize_caps(result.get("capabilities", {})),
+                "server_version": config.version_info.get("tag", "unknown"),
+                "server_source": config.server_source,
+                "version_check": config.version_info,
             }
         }
+        return response
     except Exception as exc:
         _client = None
         _doc_manager = None

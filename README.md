@@ -93,7 +93,48 @@ Or manually edit `~/.kimi/mcp.json`:
 }
 ```
 
-## Environment Variables
+## Configuration
+
+Configuration is resolved in the following priority (highest first):
+
+1. **Project config** — `.scheme-langserver.toml` (or `.scheme-langserver.json`) in the project root
+2. **Environment variables**
+3. **Built-in defaults**
+
+### Project configuration file
+
+Create `.scheme-langserver.toml` in your project root:
+
+```toml
+langserver_path = "/nix/store/.../bin/scheme-langserver"
+multi_thread = "enable"
+type_inference = "enable"
+top_environment = "R6RS"
+auto_update = true
+```
+
+Supported fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `langserver_path` | string | Override the scheme-langserver executable path |
+| `multi_thread` | string | `enable` / `disable` |
+| `type_inference` | string | `enable` / `disable` |
+| `top_environment` | string | `R6RS` / `R7RS` / `s7` / `goldfish` |
+| `log_path` | string | Override the log file path |
+| `auto_update` | bool | Allow auto-download when no executable is found |
+
+### Auto-download
+
+If no scheme-langserver executable is found locally, the bridge can **automatically download** the latest release from GitHub:
+
+- Uses GitHub's static redirect URL (`releases/latest/download/...`) with `HEAD` requests to detect the latest version **without consuming API rate limits**.
+- Downloads are cached to `~/.cache/scheme-langserver-bridge/versions/<version>/`.
+- Version-check results are cached with a 1-hour TTL.
+- Controlled by `auto_update` in project config or `SCHEME_LANGSERVER_AUTO_UPDATE` env var (default `true`).
+- **Currently supports Linux x86_64 glibc only.** Other platforms will receive a manual-installation hint.
+
+### Environment variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -106,6 +147,7 @@ Or manually edit `~/.kimi/mcp.json`:
 | `SCHEME_LANGSERVER_COMPLETION_TIMEOUT` | Completion request timeout in seconds | `30.0` |
 | `SCHEME_LANGSERVER_MAX_MEMORY_MB` | Sub-process memory limit in MB | `1024` |
 | `SCHEME_LANGSERVER_MAX_CPU_SECONDS` | Sub-process CPU time limit in seconds | `180` |
+| `SCHEME_LANGSERVER_AUTO_UPDATE` | Allow auto-download when no executable is found | `true` |
 | `SCHEME_BRIDGE_LOGLEVEL` | Bridge log level: `DEBUG` / `INFO` / `WARNING` / `ERROR` | `INFO` |
 | `SCHEME_BRIDGE_REPORT_DIR` | Default directory for debug crash reports | current working dir |
 

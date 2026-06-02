@@ -46,7 +46,7 @@ class TestConfig:
         fake_bin.parent.mkdir(parents=True, exist_ok=True)
         fake_bin.touch()
         monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
-        config = Config.from_env()
+        config = Config.load(root_dir=str(tmp_path))
         assert config.langserver_path == str(fake_bin)
 
     def test_log_path_default(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -54,7 +54,7 @@ class TestConfig:
         fake_bin.touch()
         monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
         monkeypatch.delenv("SCHEME_LANGSERVER_LOG_PATH", raising=False)
-        config = Config.from_env()
+        config = Config.load(root_dir=str(tmp_path))
         assert config.log_path is not None
         assert ".scheme-langserver.log" in config.log_path
 
@@ -66,7 +66,7 @@ class TestConfig:
         monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
         monkeypatch.delenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", raising=False)
         monkeypatch.delenv("SCHEME_LANGSERVER_MAX_CPU_SECONDS", raising=False)
-        config = Config.from_env()
+        config = Config.load(root_dir=str(tmp_path))
         assert config.max_memory_mb == 1024
         assert config.max_cpu_seconds == 180
 
@@ -78,7 +78,7 @@ class TestConfig:
         monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
         monkeypatch.setenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", "512")
         monkeypatch.setenv("SCHEME_LANGSERVER_MAX_CPU_SECONDS", "60")
-        config = Config.from_env()
+        config = Config.load(root_dir=str(tmp_path))
         assert config.max_memory_mb == 512
         assert config.max_cpu_seconds == 60
 
@@ -89,7 +89,7 @@ class TestConfig:
         fake_bin.touch()
         monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
         monkeypatch.setenv("SCHEME_LANGSERVER_TIMEOUT", "abc")
-        config = Config.from_env()
+        config = Config.load(root_dir=str(tmp_path))
         assert config.timeout == 30.0
 
     def test_invalid_max_memory_mb_fallback(
@@ -99,7 +99,7 @@ class TestConfig:
         fake_bin.touch()
         monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
         monkeypatch.setenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", "not_a_number")
-        config = Config.from_env()
+        config = Config.load(root_dir=str(tmp_path))
         assert config.max_memory_mb == 1024
 
 
