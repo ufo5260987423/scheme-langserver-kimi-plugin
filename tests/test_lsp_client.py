@@ -8,7 +8,119 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from scheme_langserver_bridge.crash_reporter import CrashReporter
 from scheme_langserver_bridge.lsp_client import LspClient, LspError, _set_resource_limits
+
+
+class TestCrashReporterWiring:
+    async def test_request_records_outgoing_when_reporter_attached(self) -> None:
+        config = MagicMock()
+        config.timeout = 5.0
+        client = LspClient(config)
+        reporter = MagicMock(spec=CrashReporter)
+        client._crash_reporter = reporter
+        client._shutdown = False
+        client._crashed = False
+
+        mock_stdin = MagicMock()
+        mock_stdin.write = MagicMock()
+        mock_stdin.drain = AsyncMock()
+
+        async def fake_wait() -> int:
+            return 0
+
+        mock_process = MagicMock()
+        mock_process.stdin = mock_stdin
+        mock_process.stdout = None
+        mock_process.stderr = None
+        mock_process.returncode = None
+        mock_process.terminate = MagicMock()
+        mock_process.kill = MagicMock()
+        mock_process.wait = fake_wait
+        client.process = mock_process
+
+        # Create a pending future that will never resolve, then timeout
+        with pytest.raises(LspError, match="timed out"):
+            await client._request("hover", {}, timeout=0.001)
+
+        assert reporter.record_outgoing.called
+        payload = reporter.record_outgoing.call_args[0][0]
+        assert "hover" in payload
+
+    async def test_notify_records_outgoing_when_reporter_attached(self) -> None:
+        config = MagicMock()
+        client = LspClient(config)
+        reporter = MagicMock(spec=CrashReporter)
+        client._crash_reporter = reporter
+        client._shutdown = False
+        client._crashed = False
+
+        mock_stdin = MagicMock()
+        mock_stdin.write = MagicMock()
+        mock_stdin.drain = AsyncMock()
+
+        mock_process = MagicMock()
+        mock_process.stdin = mock_stdin
+        mock_process.stdout = None
+        mock_process.stderr = None
+        mock_process.returncode = None
+        client.process = mock_process
+
+        await client._notify("textDocument/didOpen", {"textDocument": {"uri": "file:///a.scm"}})
+
+        assert reporter.record_outgoing.called
+        payload = reporter.record_outgoing.call_args[0][0]
+        assert "textDocument/didOpen" in payload
+
+    async def test_stderr_records_via_reporter(self) -> None:
+        config = MagicMock()
+        client = LspClient(config)
+        reporter = MagicMock(spec=CrashReporter)
+        client._crash_reporter = reporter
+
+        mock_stderr = MagicMock()
+        mock_stderr.readline = AsyncMock(side_effect=[b"error line\n", b""])
+
+        mock_process = MagicMock()
+        mock_process.stderr = mock_stderr
+        client.process = mock_process
+
+        await client._drain_stderr()
+
+        assert reporter.record_stderr.called
+        assert "error line" in reporter.record_stderr.call_args[0][0]
+
+    async def test_timeout_triggers_auto_report(self) -> None:
+        config = MagicMock()
+        config.timeout = 5.0
+        client = LspClient(config)
+        reporter = MagicMock(spec=CrashReporter)
+        client._crash_reporter = reporter
+        client._shutdown = False
+        client._crashed = False
+
+        mock_stdin = MagicMock()
+        mock_stdin.write = MagicMock()
+        mock_stdin.drain = AsyncMock()
+
+        async def fake_wait() -> int:
+            return 0
+
+        mock_process = MagicMock()
+        mock_process.stdin = mock_stdin
+        mock_process.stdout = None
+        mock_process.stderr = None
+        mock_process.returncode = None
+        mock_process.terminate = MagicMock()
+        mock_process.kill = MagicMock()
+        mock_process.wait = fake_wait
+        client.process = mock_process
+
+        with pytest.raises(LspError, match="timed out"):
+            await client._request("hover", {}, timeout=0.001)
+
+        assert reporter.auto_generate_on_crash.called
+        assert "timeout" in reporter.auto_generate_on_crash.call_args[1]["reason"]
 
 
 class TestWriteLock:

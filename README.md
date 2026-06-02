@@ -11,10 +11,10 @@ When you ask Kimi to write, refactor, or explain Scheme code, Kimi can now call 
 - **Exact definition locations** — via `textDocument/definition`
 - **Cross-reference search** — via `textDocument/references`
 - **Syntax / semantic diagnostics** — via `textDocument/publishDiagnostics`
-- **Safe rename edits** — via `textDocument/rename`
-- **Function signatures** — via `textDocument/signatureHelp`
-- **Workspace-wide symbol search** — via `workspace/symbol`
-- **Code actions** — via `textDocument/codeAction`
+- **Safe rename edits** — via `textDocument/rename` (server support is on the roadmap)
+- **Function signatures** — via `textDocument/signatureHelp` (server support is on the roadmap)
+- **Workspace-wide symbol search** — via `workspace/symbol` (requires scheme-langserver ≥ 2.1.0)
+- **Code actions** — via `textDocument/codeAction` (server support is on the roadmap)
 
 **Important**: You (the user) never interact with scheme-langserver directly. Kimi invokes the bridge tools automatically when it judges that precise code information would help its reasoning.
 
@@ -23,9 +23,11 @@ When you ask Kimi to write, refactor, or explain Scheme code, Kimi can now call 
 scheme-langserver is actively developed and **not infallible**:
 
 - Type inference is experimental and may be wrong or hang on complex code.
-- Macro support (`syntax-case`, `syntax-rules`) is incomplete.
+- Macro support (`syntax-case`, `syntax-rules`) is incomplete. Production builds fall back to hand-written rules.
 - Analysis of unfinished code is best-effort.
 - Implementation-specific Chez Scheme extensions may not be recognized.
+- `workspace/symbol` requires scheme-langserver **≥ 2.1.0**.
+- `textDocument/rename`, `textDocument/signatureHelp`, and `textDocument/codeAction` are exposed by the bridge but still on the server's roadmap; the server may return "method not found".
 
 Kimi is expected to treat LSP output as a **reference**, cross-check it against its own training knowledge, and gracefully fall back when the server returns errors or nonsense.
 
@@ -105,6 +107,7 @@ Or manually edit `~/.kimi/mcp.json`:
 | `SCHEME_LANGSERVER_MAX_MEMORY_MB` | Sub-process memory limit in MB | `1024` |
 | `SCHEME_LANGSERVER_MAX_CPU_SECONDS` | Sub-process CPU time limit in seconds | `180` |
 | `SCHEME_BRIDGE_LOGLEVEL` | Bridge log level: `DEBUG` / `INFO` / `WARNING` / `ERROR` | `INFO` |
+| `SCHEME_BRIDGE_REPORT_DIR` | Default directory for debug crash reports | current working dir |
 
 ## Resource Limits
 
@@ -130,6 +133,26 @@ The bridge monitors the LSP process:
 - If the process exits unexpectedly (stdout EOF, stderr close), the bridge marks it as **crashed**.
 - Any subsequent tool call returns an error telling Kimi to call `lsp_shutdown` followed by `lsp_initialize` to restart the server.
 - On shutdown signals (`SIGINT`, `SIGTERM`), the bridge gracefully stops the LSP server before exiting.
+
+### Debug reporting
+
+When scheme-langserver crashes or behaves abnormally, the bridge **automatically generates a debug report** containing:
+
+- LSP traffic log (`ready-for-analyse.log`) — compatible with upstream replay scripts
+- Open file snapshots
+- Server stderr and own log
+- Environment metadata (versions, args, diagnostics)
+
+You can also manually export a report at any time:
+
+```
+lsp_export_debug_report(output_path="/optional/path")
+```
+
+> ⚠️ Reports contain your source code. Review before posting to a public issue tracker.
+>
+> Reports are saved to `SCHEME_BRIDGE_REPORT_DIR` (or the current working directory) as:
+> `scheme-langserver-debug-report-YYYYMMDD-HHMMSS/`
 
 ## Usage Examples
 
@@ -212,7 +235,7 @@ All tools are prefixed with `lsp_`:
 | `lsp_workspace_symbol` | Search symbols across the workspace |
 | `lsp_code_action` | Get quick fixes / refactorings for a range |
 | `lsp_diagnostics` | Get errors and warnings |
-| `lsp_shutdown` | Stop the language server |
+| `lsp_export_debug_report` | Export a debug report for upstream issue reporting |
 
 ## NixOS Specific Notes
 

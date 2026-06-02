@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from .config import Config
+from .crash_reporter import CrashReporter
 
 try:
     import resource
@@ -46,6 +47,7 @@ class LspClient:
         self._shutdown = False
         self._crashed = False
         self._write_lock = asyncio.Lock()
+        self._crash_reporter: CrashReporter | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -349,6 +351,9 @@ class LspClient:
 
         logger.debug("LSP request -> %s", payload)
 
+        if self._crash_reporter is not None:
+            self._crash_reporter.record_outgoing(payload)
+
         effective_timeout = timeout if timeout is not None else self.config.timeout
         try:
             return await asyncio.wait_for(future, timeout=effective_timeout)
@@ -373,6 +378,8 @@ class LspClient:
                     self.process.kill()
                     await self.process.wait()
                 self._crashed = True
+            if self._crash_reporter is not None:
+                self._crash_reporter.auto_generate_on_crash(reason=f"timeout-{method}")
             raise LspError(
                 -32001, f"Request '{method}' timed out after {effective_timeout}s"
             ) from None
@@ -398,6 +405,9 @@ class LspClient:
             self.process.stdin.write(data.encode("utf-8"))
             await self.process.stdin.drain()
         logger.debug("LSP notify -> %s", payload)
+
+        if self._crash_reporter is not None:
+            self._crash_reporter.record_outgoing(payload)
 
     def _next_id(self) -> int:
         self._req_id += 1
@@ -442,15 +452,21 @@ class LspClient:
                     continue
 
                 logger.debug("LSP message <- %s", msg)
+                if self._crash_reporter is not None:
+                    self._crash_reporter.record_incoming(body.decode("utf-8", errors="replace"))
                 self._dispatch(msg)
         except asyncio.CancelledError:
             raise
         except asyncio.IncompleteReadError:
             logger.info("LSP server stdout closed")
             self._crashed = True
+            if self._crash_reporter is not None:
+                self._crash_reporter.auto_generate_on_crash(reason="stdout-closed")
         except Exception as exc:
             logger.exception("LSP read loop error: %s", exc)
             self._crashed = True
+            if self._crash_reporter is not None:
+                self._crash_reporter.auto_generate_on_crash(reason=f"read-loop-error-{type(exc).__name__}")
 
     async def _drain_stderr(self) -> None:
         """Continuously read stderr to prevent the subprocess from blocking."""
@@ -463,10 +479,10 @@ class LspClient:
                 raise
             if not line:
                 break
-            logger.debug(
-                "LSP stderr: %s",
-                line.decode("utf-8", errors="replace").rstrip(),
-            )
+            stderr_text = line.decode("utf-8", errors="replace").rstrip()
+            logger.debug("LSP stderr: %s", stderr_text)
+            if self._crash_reporter is not None:
+                self._crash_reporter.record_stderr(stderr_text + "\n")
 
     def _dispatch(self, msg: dict[str, Any]) -> None:
         if "id" in msg:

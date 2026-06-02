@@ -31,7 +31,7 @@ scheme-langserver 是基于 Chez Scheme 的静态分析器，能提供以下 LLM
 | `textDocument/publishDiagnostics` | 获取**语法错误**和**语义错误**的实时列表 | Kimi 生成或修改代码后，立即知道是否有错误，及时在回复中修正 |
 | `textDocument/rename` | 获取安全重命名所需的**所有修改位置**（跨文件） | Kimi 执行重命名重构时，能一次性给出所有需要改动的位置，保证一致性 |
 | `textDocument/signatureHelp` | 获取函数调用的**参数列表**和**参数类型** | Kimi 写函数调用时，知道每个参数应该是什么类型，减少类型不匹配的错误 |
-| `workspace/symbol` | 获取工作区中所有匹配的符号 | Kimi 需要在整个项目中搜索某个函数或变量时，快速定位 |
+| `workspace/symbol` | 获取工作区中所有匹配的符号（**需 scheme-langserver ≥ 2.1.0**） | Kimi 需要在整个项目中搜索某个函数或变量时，快速定位 |
 | 类型推断（实验性） | 获取复杂表达式的**推导类型** | Kimi 分析高阶函数、宏展开后的表达式时，有类型信息作为依据，推理更可靠 |
 
 ### scheme-langserver 的能力边界（Kimi 必须知道）
@@ -41,21 +41,26 @@ scheme-langserver 的返回信息**并非完全可靠**。Kimi 在调用 LSP 工
 **已知局限性**：
 
 - **类型推断是实验性的**：作者明确标注为 early stage，对复杂高阶函数、宏展开后的表达式可能给出错误类型或不终止
-- **宏支持不完善**：`syntax-case`、`syntax-rules` 等宏展开后的标识符捕捉和作用域分析可能出错
+- **宏支持不完善（2.1.0 扩展但未全开）**：2.1.0 在实验环境中支持了 `syntax-case`、`syntax-rules`、`let-syntax`、`letrec-syntax` 的通用宏解析，但生产构建中**未启用**（性能过慢），仍回退到手写规则
 - **未完成代码的近似分析**：scheme-langserver 虽然声称支持未完成代码，但静态分析对残缺 AST 的推断本质上是"尽力而为"，可能误判
 - **实现特定扩展覆盖有限**：Chez Scheme 的 `foreign-procedure`、`ftype`、线程原语等非标准特性，LSP 可能无法识别
 - **活跃开发中，有 bug**：作者多次在 release note 和文档中承认"There're many many bugs"
 - **多线程机制增加不确定性**：`-m enable` 开启多线程后，竞态条件可能导致偶发的分析结果不一致
+- **工具可用性受服务器版本限制**：
+  - `workspace/symbol` 需要 **scheme-langserver ≥ 2.1.0**（此前版本不支持）
+  - `textDocument/rename`、`textDocument/signatureHelp`、`textDocument/codeAction` 当前仅在 scheme-langserver 的 Roadmap 中，服务器可能返回 "method not found" 或行为不完整
+- **诊断范围持续扩展（2.1.0+）**：新增重复标识符检测、未使用导入检测、tokenizer 语法错误等；诊断信息现在包含标准 `source` 和 `code` 字段
 
 **Kimi 的使用策略**：
 
 1. **交叉验证**：LSP 返回的信息应与 Kimi 自身的训练知识对照。如果两者矛盾，优先相信自己的训练数据，但把 LSP 结果作为疑点进一步排查
 2. **置信度分级**：
    - **高置信度**：`definition`（跳转到定义）、`references`（查找引用）、基础语法 `diagnostics`（括号匹配、未定义标识符）
-   - **中置信度**：`completion`（补全列表可能漏掉宏生成的标识符）
-   - **低置信度**：`type inference`（实验性）、宏相关的 `hover` 信息
+   - **中置信度**：`completion`（补全列表可能漏掉宏生成的标识符）；`workspace/symbol`（≥ 2.1.0，跨文件符号搜索准确度取决于索引完整性）
+   - **低置信度**：`type inference`（实验性）、宏相关的 `hover` 信息、`rename` / `signatureHelp` / `codeAction`（服务器端仍在 Roadmap 阶段）
 3. **fallback 机制**：当 LSP 返回异常、超时或明显荒谬的结果时，Kimi 应优雅降级，直接基于自身知识回答，而不是把错误信息传给用户
-4. **不盲从**：如果 LSP 说某个代码有错误，但 Kimi 从语义上判断是正确的（例如使用了实现特定扩展），Kimi 应优先相信自己的判断
+4. **崩溃时引导用户提交调试报告**：当 scheme-langserver 崩溃且 Bridge 已自动生成调试报告时，Kimi 应主动告知用户报告位置，并建议用户审查后提交到 https://github.com/ufo5260987423/scheme-langserver/issues 。这是改善 Kimi 长期使用体验的关键闭环。
+5. **不盲从**：如果 LSP 说某个代码有错误，但 Kimi 从语义上判断是正确的（例如使用了实现特定扩展），Kimi 应优先相信自己的判断
 
 ### 核心价值：Kimi 直接获益
 

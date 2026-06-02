@@ -11,6 +11,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from .config import Config, _find_akku_libdirs
+from .crash_reporter import CrashReporter
 from .document_sync import DocumentManager
 from .lsp_client import LspClient, LspError
 
@@ -156,6 +157,11 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
     config = Config.from_env()
     _client = LspClient(config)
     _doc_manager = DocumentManager(_client)
+
+    crash_reporter = CrashReporter(config)
+    crash_reporter.attach(_client, _doc_manager)
+    _client._crash_reporter = crash_reporter
+
     try:
         result = await _client.start(root_dir)
         return {
@@ -168,6 +174,42 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
     except Exception as exc:
         _client = None
         _doc_manager = None
+        return _lsp_error(exc)
+
+
+@mcp.tool()
+async def lsp_export_debug_report(output_path: str | None = None) -> dict[str, Any]:
+    """Export a debug report for scheme-langserver upstream issue reporting.
+
+    The report contains the LSP traffic log, open project files, environment
+    info, and server stderr. Review before sharing publicly — it includes
+    source code.
+    """
+    try:
+        client = _ensure_client()
+        if client._crash_reporter is None:
+            return {
+                "content": {
+                    "error": True,
+                    "message": "Crash reporter not initialized. Call lsp_initialize first.",
+                }
+            }
+
+        target = Path(output_path) if output_path else None
+        report_dir = client._crash_reporter.generate_report(
+            output_dir=target, reason="manual"
+        )
+
+        return {
+            "content": {
+                "report_path": str(report_dir),
+                "note": (
+                    "Report generated. It contains your source code. "
+                    "Please review before posting to a public issue tracker."
+                ),
+            }
+        }
+    except Exception as exc:
         return _lsp_error(exc)
 
 

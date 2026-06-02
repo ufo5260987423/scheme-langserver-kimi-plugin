@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Debug report collection** for upstream bug reporting.
+  - New module `crash_reporter.py` collects LSP traffic, project snapshots, stderr, and environment metadata.
+  - `ready-for-analyse.log` is generated in the exact format consumed by scheme-langserver's replay scripts (`bin/log-debug.sps` / `bin/parallel-log-debug.sps`).
+  - Automatic report generation on crash (EOF, IncompleteReadError, timeout kill).
+  - New MCP tool `lsp_export_debug_report` for manual on-demand capture.
+  - Privacy warning embedded in every report — users must review before sharing publicly.
+  - New environment variable `SCHEME_BRIDGE_REPORT_DIR`.
+
+### Changed
+- Confirmed compatibility with scheme-langserver **2.1.0**.
+- Updated documentation to reflect server-side feature availability:
+  - `workspace/symbol` requires scheme-langserver ≥ 2.1.0.
+  - `textDocument/rename`, `textDocument/signatureHelp`, and `textDocument/codeAction` are exposed by the bridge but remain on the scheme-langserver roadmap; the server may not yet implement them.
+- Expanded known-limitations to cover 2.1.0 diagnostics enhancements (duplicate identifiers, unused imports, tokenizer errors) and macro auto-resolution status (experimentally correct but disabled in production).
+
 ## [0.1.0] - 2025-05-21
 
 ### Added

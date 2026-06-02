@@ -24,6 +24,7 @@ class Config:
     completion_timeout: float = 30.0
     max_memory_mb: int = 1024
     max_cpu_seconds: int = 180
+    report_dir: str | None = None
 
     @classmethod
     def from_env(cls) -> Config:
@@ -45,6 +46,7 @@ class Config:
             ),
             max_memory_mb=_env_int("SCHEME_LANGSERVER_MAX_MEMORY_MB", 1024),
             max_cpu_seconds=_env_int("SCHEME_LANGSERVER_MAX_CPU_SECONDS", 180),
+            report_dir=os.environ.get("SCHEME_BRIDGE_REPORT_DIR"),
         )
 
     @staticmethod
