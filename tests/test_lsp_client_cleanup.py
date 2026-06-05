@@ -80,6 +80,7 @@ async def test_timeout_cleans_other_pending_futures() -> None:
     mock_proc = _create_mock_process(writer, stdout, stderr)
 
     client.process = mock_proc
+    client._initialized = True
     client._reader_task = asyncio.create_task(client._read_loop())
     client._stderr_task = asyncio.create_task(client._drain_stderr())
 

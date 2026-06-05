@@ -104,9 +104,9 @@ class LspClient:
                 "textDocument": {
                     "synchronization": {
                         "dynamicRegistration": False,
-                        "willSave": True,
-                        "willSaveWaitUntil": True,
-                        "didSave": True,
+                        "willSave": False,
+                        "willSaveWaitUntil": False,
+                        "didSave": False,
                     },
                     "completion": {
                         "dynamicRegistration": False,
@@ -163,7 +163,6 @@ class LspClient:
         """Gracefully shut down the LSP server."""
         if self._shutdown or self.process is None:
             return
-        self._shutdown = True
         if not self._crashed and self.process.returncode is None:
             try:
                 await self._request("shutdown", None)
@@ -173,6 +172,7 @@ class LspClient:
                 await self._notify("exit", None)
             except Exception as exc:
                 logger.warning("Exit notification failed: %s", exc)
+        self._shutdown = True
         await self._cleanup()
 
     async def _cleanup(self) -> None:
@@ -332,8 +332,12 @@ class LspClient:
                 "scheme-langserver process has crashed. "
                 "Please call lsp_shutdown and lsp_initialize to restart."
             )
-        if self._shutdown:
-            raise RuntimeError("LSP client is shutting down")
+        # Lifecycle methods bypass initialize/shutdown gates.
+        if method not in ("initialize", "shutdown"):
+            if not self._initialized:
+                raise RuntimeError("LSP client not initialized")
+            if self._shutdown:
+                raise RuntimeError("LSP client is shutting down")
 
         req_id = self._next_id()
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
@@ -344,9 +348,10 @@ class LspClient:
             message["params"] = params
 
         payload = json.dumps(message, ensure_ascii=False)
-        data = f"Content-Length: {len(payload.encode('utf-8'))}\r\n\r\n{payload}"
+        payload_bytes = payload.encode("utf-8")
+        header = f"Content-Length: {len(payload_bytes)}\r\n\r\n".encode("utf-8")
         async with self._write_lock:
-            self.process.stdin.write(data.encode("utf-8"))
+            self.process.stdin.write(header + payload_bytes)
             await self.process.stdin.drain()
 
         logger.debug("LSP request -> %s", payload)
@@ -392,17 +397,22 @@ class LspClient:
                 "scheme-langserver process has crashed. "
                 "Please call lsp_shutdown and lsp_initialize to restart."
             )
-        if self._shutdown:
-            raise RuntimeError("LSP client is shutting down")
+        # Lifecycle notifications bypass initialize/shutdown gates.
+        if method not in ("initialized", "exit"):
+            if not self._initialized:
+                raise RuntimeError("LSP client not initialized")
+            if self._shutdown:
+                raise RuntimeError("LSP client is shutting down")
 
         message: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
         if params is not None:
             message["params"] = params
 
         payload = json.dumps(message, ensure_ascii=False)
-        data = f"Content-Length: {len(payload.encode('utf-8'))}\r\n\r\n{payload}"
+        payload_bytes = payload.encode("utf-8")
+        header = f"Content-Length: {len(payload_bytes)}\r\n\r\n".encode("utf-8")
         async with self._write_lock:
-            self.process.stdin.write(data.encode("utf-8"))
+            self.process.stdin.write(header + payload_bytes)
             await self.process.stdin.drain()
         logger.debug("LSP notify -> %s", payload)
 
@@ -545,5 +555,9 @@ def _set_resource_limits(max_memory_bytes: int, max_cpu_seconds: int) -> None:
 
 def _path_to_uri(path: str) -> str:
     from pathlib import Path
+    from urllib.parse import quote
+
     abs_path = str(Path(path).resolve())
-    return "file://" + abs_path
+    # Percent-encode the path so spaces and non-ASCII characters are valid URIs.
+    encoded = quote(abs_path, safe="/")
+    return "file://" + encoded

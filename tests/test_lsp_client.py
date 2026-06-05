@@ -21,6 +21,7 @@ class TestCrashReporterWiring:
         client._crash_reporter = reporter
         client._shutdown = False
         client._crashed = False
+        client._initialized = True
 
         mock_stdin = MagicMock()
         mock_stdin.write = MagicMock()
@@ -54,6 +55,7 @@ class TestCrashReporterWiring:
         client._crash_reporter = reporter
         client._shutdown = False
         client._crashed = False
+        client._initialized = True
 
         mock_stdin = MagicMock()
         mock_stdin.write = MagicMock()
@@ -98,6 +100,7 @@ class TestCrashReporterWiring:
         client._crash_reporter = reporter
         client._shutdown = False
         client._crashed = False
+        client._initialized = True
 
         mock_stdin = MagicMock()
         mock_stdin.write = MagicMock()
@@ -132,6 +135,7 @@ class TestWriteLock:
         client = LspClient(MagicMock())
         client._shutdown = False
         client._crashed = False
+        client._initialized = True
 
         order: list[str] = []
 
@@ -177,6 +181,7 @@ class TestTimeoutCleanup:
         client = LspClient(MagicMock())
         client._shutdown = False
         client._crashed = False
+        client._initialized = True
         client.process = MagicMock()
         client.process.stdin = MagicMock()
         client.process.stdin.write = MagicMock()
@@ -303,6 +308,7 @@ class TestShutdownRejection:
         mock_process.returncode = None
         client.process = mock_process
         client._shutdown = True
+        client._initialized = True
 
         with pytest.raises(RuntimeError, match="shutting down"):
             await client._request("hover", {})

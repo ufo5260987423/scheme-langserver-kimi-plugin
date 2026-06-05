@@ -29,7 +29,9 @@ _init_lock = asyncio.Lock()
 
 
 def _file_uri(path: str) -> str:
-    return "file://" + str(Path(path).absolute())
+    from urllib.parse import quote
+    abs_path = str(Path(path).absolute())
+    return "file://" + quote(abs_path, safe="/")
 
 
 def _infer_root_dir(file_path: str) -> str:
@@ -51,6 +53,13 @@ async def _ensure_initialized(file_path: str | None = None) -> LspClient:
         async with _init_lock:
             crashed = getattr(_client, "_crashed", False) is True
             if _client is None or crashed:
+                # Snapshot open documents before shutdown so we can re-open them.
+                stale_docs: dict[str, tuple[str, str]] = {}
+                if _doc_manager is not None:
+                    for uri in _doc_manager.list_uris():
+                        doc = _doc_manager.get(uri)
+                        if doc:
+                            stale_docs[uri] = (doc["language_id"], doc["text"])
                 if crashed:
                     logger.info("LSP server crashed, shutting down before restart...")
                     try:
@@ -59,8 +68,18 @@ async def _ensure_initialized(file_path: str | None = None) -> LspClient:
                         logger.warning("lsp_shutdown during auto-restart failed: %s", exc)
                 root_dir = _infer_root_dir(file_path or os.getcwd())
                 result = await lsp_initialize(root_dir)
-                if result.get("content", {}).get("error"):
-                    raise RuntimeError(f"Auto-initialization failed: {result['content']}")
+                content = result.get("content", {})
+                if content.get("error"):
+                    raise RuntimeError(f"Auto-initialization failed: {content}")
+                # Re-open documents that were open before the crash.
+                if _doc_manager is not None and stale_docs:
+                    for uri, (lang_id, text) in stale_docs.items():
+                        try:
+                            await _doc_manager.open(uri, lang_id, text)
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to re-open %s after restart: %s", uri, exc
+                            )
     if _client is None:
         raise RuntimeError("LSP server not initialized. Call lsp_initialize first.")
     return _client
