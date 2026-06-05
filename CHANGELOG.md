@@ -26,11 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New environment variable `SCHEME_BRIDGE_REPORT_DIR`.
 
 ### Changed
-- Confirmed compatibility with scheme-langserver **2.1.0**.
+- Confirmed compatibility with scheme-langserver **2.1.1**.
 - Updated documentation to reflect server-side feature availability:
-  - `workspace/symbol` requires scheme-langserver ≥ 2.1.0.
+  - `workspace/symbol` requires scheme-langserver ≥ 2.1.0 (no protocol changes in 2.1.1).
   - `textDocument/rename`, `textDocument/signatureHelp`, and `textDocument/codeAction` are exposed by the bridge but remain on the scheme-langserver roadmap; the server may not yet implement them.
-- Expanded known-limitations to cover 2.1.0 diagnostics enhancements (duplicate identifiers, unused imports, tokenizer errors) and macro auto-resolution status (experimentally correct but disabled in production).
+- Expanded known-limitations to cover 2.1.0+ diagnostics enhancements (duplicate identifiers, unused imports, tokenizer errors) and macro auto-resolution status (experimentally correct but disabled in production).
+- Documented 2.1.1 server-side fixes: `typed-lambda/lambda` dotted-formals crash, `identifier-compare? symbol?` guard, `rename/alias` unused-import false positive, R7RS/S7 tokenizer compatibility, and `display-condition` diagnostics improvement.
 
 ## [0.1.0] - 2025-05-21
 
