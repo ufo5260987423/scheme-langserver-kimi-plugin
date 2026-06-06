@@ -17,7 +17,64 @@ from .lsp_client import LspClient, LspError
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("scheme-langserver-bridge")
+_INSTRUCTIONS = """\
+You are assisting Kimi to analyze and generate Scheme code via the scheme-langserver LSP
+bridge.
+
+## Core Principles
+- scheme-langserver is a reference tool, NOT an absolute authority. Cross-check its output
+  with your own training knowledge.
+- Do NOT call LSP tools for simple Scheme language questions, trivial code, or when the
+  user explicitly says "no tools".
+- DO call LSP tools when you need: local scope bindings, precise type info, cross-file
+  definitions/references, syntax/semantic validation, or refactoring impact analysis.
+
+## Editor-Style Workflow
+Treat this bridge like an IDE/editor, not a query API.
+1. Call lsp_initialize(root_dir=...) once per session. It may take a few seconds
+   because scheme-langserver performs initial indexing. Be patient and do NOT
+   restart repeatedly.
+2. Open all files you plan to work on via lsp_open (like opening tabs in an editor).
+   If you are working on multiple related Scheme files (e.g., a library and its tests),
+   open all of them at the start of the session rather than one by one on demand.
+   Keep them open for the duration of the session. Do NOT open and close repeatedly.
+3. When you edit a file via filesystem tools (WriteFile/StrReplaceFile), immediately
+   call lsp_change to sync the new content to the server (like pressing Save).
+4. After syncing, call lsp_diagnostics to check for errors (like IDE real-time linting).
+5. Iterate: edit -> lsp_change -> lsp_diagnostics -> edit -> ...
+6. Only call lsp_close when you are truly done with a file, or at session end.
+
+## Fallback Policy
+If lsp_initialize fails to start (timeout, executable not found, crash on startup),
+do NOT keep retrying or troubleshooting. Simply abandon the LSP tools for this
+session and proceed based entirely on your own training knowledge.
+If a tool returns timeout (-32001), retry once; if it still fails, fall back to your
+own knowledge.
+If a tool returns "method not found" (-32601), fall back to your own knowledge and do
+NOT expose the raw error to the user.
+
+## Confidence Levels
+- HIGH (trust): definition, references, basic diagnostics (bracket matching, undefined id)
+- MEDIUM (reference only): completion, hover, documentSymbol, workspaceSymbol
+- LOW (verify carefully): type inference (experimental, often wrong on higher-order
+  functions and macro-expanded code)
+
+## Known Limitations
+- Type inference is experimental and may give absurd results for complex higher-order
+  functions or macro-expanded expressions.
+- Macro support is incomplete: syntax-case/syntax-rules expansion may mis-capture ids.
+- Analysis of incomplete code is best-effort and may misjudge.
+- Chez Scheme-specific extensions (foreign-procedure, ftype, thread primitives) may not
+  be recognized.
+- The server is actively developed and contains bugs.
+- rename and signatureHelp are on the roadmap and may return -32601.
+
+## Cross-Validation Rule
+When LSP output contradicts your training data, trust your training data. Treat LSP
+results as clues for further investigation, not as final verdicts.
+"""
+
+mcp = FastMCP("scheme-langserver-bridge", instructions=_INSTRUCTIONS)
 _client: LspClient | None = None
 _doc_manager: DocumentManager | None = None
 _init_lock = asyncio.Lock()
@@ -211,6 +268,10 @@ async def lsp_export_debug_report(output_path: str | None = None) -> dict[str, A
     The report contains the LSP traffic log, open project files, environment
     info, and server stderr. Review before sharing publicly — it includes
     source code.
+
+    **When to use**: scheme-langserver crashed or returned clearly wrong results,
+    and you want to help debug by generating a report for the upstream issue
+    tracker (https://github.com/ufo5260987423/scheme-langserver/issues).
     """
     try:
         client = _ensure_client()
@@ -262,10 +323,13 @@ async def lsp_shutdown() -> dict[str, Any]:
 
 @mcp.tool()
 async def lsp_open(file_path: str, language_id: str = "scheme") -> dict[str, Any]:
-    """Open a file in the language server.
+    """Open a file in the language server (like opening a tab in an editor).
 
     The server needs to know file contents before it can provide
     hover, completion, or diagnostics for that file.
+
+    **When to use**: When you start working on a Scheme file. Keep the file open
+    for the duration of the session; do NOT open and close repeatedly.
     """
     doc_mgr = _ensure_doc_manager()
     try:
@@ -288,10 +352,14 @@ async def lsp_open(file_path: str, language_id: str = "scheme") -> dict[str, Any
 
 @mcp.tool()
 async def lsp_change(file_path: str, text: str) -> dict[str, Any]:
-    """Notify the language server that a file has changed.
+    """Notify the language server that a file has changed (like pressing Save).
 
     Send the new full text of the file. This keeps the server's
     internal state in sync with the actual file contents.
+
+    **When to use**: IMMEDIATELY after you modify a Scheme file via filesystem
+    tools (WriteFile/StrReplaceFile). If you skip this step, subsequent
+    diagnostics and queries will operate on stale content.
     """
     doc_mgr = _ensure_doc_manager()
     uri = _file_uri(file_path)
@@ -304,7 +372,12 @@ async def lsp_change(file_path: str, text: str) -> dict[str, Any]:
 
 @mcp.tool()
 async def lsp_close(file_path: str) -> dict[str, Any]:
-    """Close a file in the language server."""
+    """Close a file in the language server.
+
+    **When to use**: When you are completely done with a file or at session end.
+    Do NOT close files just because you paused editing; frequent open/close wastes
+    server resources.
+    """
     doc_mgr = _ensure_doc_manager()
     uri = _file_uri(file_path)
     try:
@@ -321,7 +394,12 @@ async def lsp_close(file_path: str) -> dict[str, Any]:
 
 @mcp.tool()
 async def lsp_hover(file_path: str, line: int, character: int) -> dict[str, Any]:
-    """Get hover information (type, docs) for a symbol at a position.
+    """Show hover tooltip (type, docs) for the symbol under the cursor.
+
+    Like hovering the mouse over an identifier in an IDE.
+
+    **Confidence**: MEDIUM. Type inference is experimental; info about
+    macro-expanded identifiers may be inaccurate. Cross-check with your knowledge.
 
     Args:
         file_path: Absolute path to the file.
@@ -339,11 +417,13 @@ async def lsp_hover(file_path: str, line: int, character: int) -> dict[str, Any]
 
 @mcp.tool()
 async def lsp_complete(file_path: str, line: int, character: int) -> dict[str, Any]:
-    """Get completion suggestions at a position.
+    """Trigger auto-completion at the cursor position.
 
-    Returns identifiers available in the current scope, including
-    local bindings (let, lambda parameters) that may not be obvious
-    from a simple text search.
+    Like pressing Ctrl+Space in an IDE. Returns identifiers available in the
+    current scope, including local bindings (let, lambda parameters) that may
+    not be obvious from a simple text search.
+
+    **Confidence**: MEDIUM. The list may miss identifiers generated by macros.
     """
     uri = _file_uri(file_path)
     try:
@@ -372,9 +452,11 @@ async def lsp_complete(file_path: str, line: int, character: int) -> dict[str, A
 
 @mcp.tool()
 async def lsp_definition(file_path: str, line: int, character: int) -> dict[str, Any]:
-    """Find the definition location of a symbol.
+    """Go to Definition: jump to where the symbol is defined.
 
-    Returns file URI, line, and column where the identifier is defined.
+    Like pressing F12 in an IDE. Returns file URI, line, and column.
+
+    **Confidence**: HIGH. Reliable for locating definitions across files.
     """
     uri = _file_uri(file_path)
     try:
@@ -389,7 +471,11 @@ async def lsp_definition(file_path: str, line: int, character: int) -> dict[str,
 async def lsp_references(
     file_path: str, line: int, character: int, include_declaration: bool = False
 ) -> dict[str, Any]:
-    """Find all references to a symbol across the workspace.
+    """Find All References: list every usage of the symbol across the workspace.
+
+    Like Shift+F12 in an IDE.
+
+    **Confidence**: HIGH. Reliable for assessing impact before refactoring.
 
     Args:
         include_declaration: Whether to include the definition site
@@ -410,6 +496,9 @@ async def lsp_rename(file_path: str, line: int, character: int, new_name: str) -
 
     Returns a set of text document edits that can be applied to
     safely rename the symbol across all files.
+
+    **Limitation**: rename is on the scheme-langserver roadmap and may return
+    -32601 "method not found". If so, fall back to manual renaming.
     """
     uri = _file_uri(file_path)
     try:
@@ -426,6 +515,9 @@ async def lsp_signature(file_path: str, line: int, character: int) -> dict[str, 
 
     Shows parameter names and types for the function being called
     at the given position.
+
+    **Limitation**: signatureHelp is on the scheme-langserver roadmap and may
+    return -32601 "method not found". If so, fall back to your own knowledge.
     """
     uri = _file_uri(file_path)
     try:
@@ -438,10 +530,11 @@ async def lsp_signature(file_path: str, line: int, character: int) -> dict[str, 
 
 @mcp.tool()
 async def lsp_document_symbol(file_path: str) -> dict[str, Any]:
-    """List all symbols defined in a file.
+    """Show the file's symbol outline (functions, variables, macros).
 
-    Useful for getting an overview of a file's structure
-    (functions, variables, macros, etc.).
+    Like the Outline / Structure panel in an IDE.
+
+    **Confidence**: MEDIUM. Symbols generated by macros may be missing.
     """
     uri = _file_uri(file_path)
     try:
@@ -456,8 +549,11 @@ async def lsp_document_symbol(file_path: str) -> dict[str, Any]:
 async def lsp_workspace_symbol(query: str) -> dict[str, Any]:
     """Search symbols across the entire workspace.
 
-    Performs a cross-workspace symbol search using the language server.
-    Returns all symbols matching the query string across all indexed files.
+    Like Ctrl+T / Go to Symbol in an IDE. Returns all symbols matching the query
+    string across all indexed files.
+
+    **Confidence**: MEDIUM. Accuracy depends on index completeness.
+    Requires scheme-langserver >= 2.1.0.
     """
     try:
         client = await _ensure_initialized(os.getcwd())
@@ -472,6 +568,9 @@ async def lsp_code_action(
     file_path: str, start_line: int, start_character: int, end_line: int, end_character: int
 ) -> dict[str, Any]:
     """Get code actions (quick fixes, refactorings) for a range.
+
+    **Limitation**: codeAction is on the scheme-langserver roadmap and may
+    return -32601 "method not found" or behave incompletely.
     """
     uri = _file_uri(file_path)
     try:
@@ -485,6 +584,13 @@ async def lsp_code_action(
 @mcp.tool()
 async def lsp_diagnostics(file_path: str | None = None) -> dict[str, Any]:
     """Get diagnostic messages (errors, warnings) from the language server.
+
+    **When to use**: After lsp_change to check for errors, like IDE real-time
+    linting. Also useful before finishing a task to ensure no errors were introduced.
+
+    **Confidence**: HIGH for basic syntax (brackets, undefined ids). MEDIUM/LOW
+    for semantic errors and implementation-specific extensions (Chez-specific
+    forms may be falsely flagged).
 
     Args:
         file_path: If provided, returns diagnostics for that file only.
