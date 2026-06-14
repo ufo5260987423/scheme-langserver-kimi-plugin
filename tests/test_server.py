@@ -103,6 +103,40 @@ class TestLspHover:
         assert "note" in result["content"]
 
 
+class TestFormatDiagnostics:
+    def test_sorts_by_severity_and_summarizes(self) -> None:
+        raw = {
+            "file:///test.scm": [
+                {"message": "hint", "severity": 4},
+                {"message": "error", "severity": 1, "source": "scheme-langserver", "code": "E_UNBOUND"},
+                {"message": "warning", "severity": 2},
+            ]
+        }
+        formatted = server_module._format_diagnostics(raw)
+        items = formatted["file:///test.scm"]["diagnostics"]
+        assert [d["message"] for d in items] == ["error", "warning", "hint"]
+        assert formatted["file:///test.scm"]["summary"] == {
+            "error": 1,
+            "warning": 1,
+            "information": 0,
+            "hint": 1,
+            "total": 3,
+        }
+        assert items[0]["source"] == "scheme-langserver"
+        assert items[0]["code"] == "E_UNBOUND"
+
+    def test_surfaces_source_and_code_fields(self) -> None:
+        raw = {
+            "file:///test.scm": [
+                {"message": "unbound identifier", "source": "scheme-langserver", "code": "E_UNBOUND"}
+            ]
+        }
+        formatted = server_module._format_diagnostics(raw)
+        item = formatted["file:///test.scm"]["diagnostics"][0]
+        assert item["source"] == "scheme-langserver"
+        assert item["code"] == "E_UNBOUND"
+
+
 class TestLspDiagnostics:
     async def test_returns_diagnostics(self, tmp_path: Path) -> None:
         mock_client = MagicMock()
@@ -113,6 +147,7 @@ class TestLspDiagnostics:
 
         result = await server_module.lsp_diagnostics("/test.scm")
         assert "unbound identifier" in str(result["content"])
+        assert "summary" in result["content"]["file:///test.scm"]
 
     async def test_returns_all_diagnostics_when_no_path(self) -> None:
         mock_client = MagicMock()

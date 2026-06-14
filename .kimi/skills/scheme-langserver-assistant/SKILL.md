@@ -20,6 +20,7 @@ scheme-langserver 是一个**辅助参考工具**，不是绝对权威。它的�
 - 需要跨文件查找定义或引用
 - 需要确认代码是否有语法/语义错误
 - 进行重构（重命名、提取函数）前需要了解影响范围
+- **每次修改 Scheme 文件后**：S-expression 的括号极其敏感，少一个右括号可能导致整份文件结构错乱，而 LLM 靠肉眼很难精确匹配。必须通过 `lsp_diagnostics` 拉取诊断信息来验证括号匹配和 tokenizer 错误。
 
 ## 置信度分级
 
@@ -29,7 +30,7 @@ scheme-langserver 是一个**辅助参考工具**，不是绝对权威。它的�
 |--------|---------|------------|
 | **高** | `definition`（跳转到定义） | 可信任，用于定位代码 |
 | **高** | `references`（查找引用） | 可信任，用于重构前分析 |
-| **高** | 基础 `diagnostics`（括号匹配、未定义标识符） | 可信任，语法错误通常准确 |
+| **高** | 基础 `diagnostics`（括号匹配、未定义标识符、tokenizer 错误） | 可信任；scheme-langserver 2.1.2 恢复了 fault-tolerant tokenizer 中的括号不匹配诊断（如 `unclosed parenthesis`），比肉眼可靠得多 |
 | **中** | `completion`（补全列表） | 参考使用，可能漏掉宏生成的标识符 |
 | **中** | `hover`（类型/文档） | 参考使用，宏展开后的信息可能不准 |
 | **低** | `type inference`（类型推断） | 明确标注为实验性，频繁出错，仅作参考 |
@@ -78,6 +79,8 @@ scheme-langserver 是一个**辅助参考工具**，不是绝对权威。它的�
    - 是真实错误 → 指出并修正
    - 是 LSP 误报（如使用了实现特定扩展）→ 说明"scheme-langserver 报告了错误，但代码在 Chez Scheme 中是合法的"
 ```
+
+**特别强调**：Scheme 代码的括号不匹配是毁灭性的。每次用 WriteFile/StrReplaceFile 修改后，必须立即 `lsp_change` 然后 `lsp_diagnostics`。不要相信自己的括号数数能力。
 
 ## 错误处理
 

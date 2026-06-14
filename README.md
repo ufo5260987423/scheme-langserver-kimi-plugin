@@ -13,7 +13,7 @@ When you ask Kimi to write, refactor, or explain Scheme code, Kimi can now call 
 - **Syntax / semantic diagnostics** — via `textDocument/publishDiagnostics`
 - **Safe rename edits** — via `textDocument/rename` (server support is on the roadmap)
 - **Function signatures** — via `textDocument/signatureHelp` (server support is on the roadmap)
-- **Workspace-wide symbol search** — via `workspace/symbol` (requires scheme-langserver ≥ 2.1.0 (tested up to 2.1.1))
+- **Workspace-wide symbol search** — via `workspace/symbol` (requires scheme-langserver ≥ 2.1.0 (tested up to 2.1.2))
 - **Code actions** — via `textDocument/codeAction` (server support is on the roadmap)
 
 **Important**: You (the user) never interact with scheme-langserver directly. Kimi invokes the bridge tools automatically when it judges that precise code information would help its reasoning.
@@ -26,7 +26,7 @@ scheme-langserver is actively developed and **not infallible**:
 - Macro support (`syntax-case`, `syntax-rules`) is incomplete. Production builds fall back to hand-written rules.
 - Analysis of unfinished code is best-effort.
 - Implementation-specific Chez Scheme extensions may not be recognized.
-- `workspace/symbol` requires scheme-langserver **≥ 2.1.0** (tested up to 2.1.1).
+- `workspace/symbol` requires scheme-langserver **≥ 2.1.0** (tested up to 2.1.2).
 - `textDocument/rename`, `textDocument/signatureHelp`, and `textDocument/codeAction` are exposed by the bridge but still on the server's roadmap; the server may return "method not found".
 
 Kimi is expected to treat LSP output as a **reference**, cross-check it against its own training knowledge, and gracefully fall back when the server returns errors or nonsense.
@@ -276,7 +276,7 @@ All tools are prefixed with `lsp_`:
 | `lsp_document_symbol` | List all symbols in a file |
 | `lsp_workspace_symbol` | Search symbols across the workspace |
 | `lsp_code_action` | Get quick fixes / refactorings for a range |
-| `lsp_diagnostics` | Get errors and warnings |
+| `lsp_diagnostics` | Get errors and warnings (critical for catching unmatched brackets / tokenizer failures in Scheme) |
 | `lsp_export_debug_report` | Export a debug report for upstream issue reporting |
 
 ## NixOS Specific Notes

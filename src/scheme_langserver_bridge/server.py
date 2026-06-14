@@ -28,6 +28,13 @@ bridge.
   user explicitly says "no tools".
 - DO call LSP tools when you need: local scope bindings, precise type info, cross-file
   definitions/references, syntax/semantic validation, or refactoring impact analysis.
+- **CRITICAL for Scheme**: S-expressions are extremely bracket-sensitive. A single missing
+  or extra parenthesis can corrupt the entire file structure. LLMs are poor at bracket
+  matching by eye. Always pull diagnostics after editing to catch tokenizer errors,
+  unmatched brackets, and structural disasters before they propagate.
+- scheme-langserver 2.1.2 restores bracket-mismatch diagnostics in the fault-tolerant
+  tokenizer (e.g. `unclosed parenthesis`, `unexpected close bracket`), making
+  `lsp_diagnostics` even more reliable for catching these structural errors.
 
 ## Editor-Style Workflow
 Treat this bridge like an IDE/editor, not a query API.
@@ -41,6 +48,10 @@ Treat this bridge like an IDE/editor, not a query API.
 3. When you edit a file via filesystem tools (WriteFile/StrReplaceFile), immediately
    call lsp_change to sync the new content to the server (like pressing Save).
 4. After syncing, call lsp_diagnostics to check for errors (like IDE real-time linting).
+   **This is especially important in Scheme**: diagnostics will catch unmatched parentheses,
+   tokenizer failures, and other structural errors that are catastrophic and hard to spot
+   manually. scheme-langserver 2.1.2 specifically restored clear bracket-mismatch diagnostics
+   (`unclosed parenthesis`, `unexpected close bracket`) in the fault-tolerant tokenizer.
 5. Iterate: edit -> lsp_change -> lsp_diagnostics -> edit -> ...
 6. Only call lsp_close when you are truly done with a file, or at session end.
 
@@ -156,6 +167,51 @@ def _ensure_doc_manager() -> DocumentManager:
             "Document manager not initialized. Call lsp_initialize first."
         )
     return _doc_manager
+
+
+def _format_diagnostics(raw: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    """Format raw LSP diagnostics into a structured report.
+
+    Sorts diagnostics by severity (error > warning > information > hint) and
+    surfaces the standard LSP `source` and `code` fields introduced in
+    scheme-langserver 2.1.0+. This makes it easier for Kimi to prioritize
+    structural errors such as unmatched brackets, which scheme-langserver 2.1.2
+    reports explicitly (e.g. ``unclosed parenthesis``).
+    """
+    severity_names = {1: "error", 2: "warning", 3: "information", 4: "hint"}
+    default_summary = {
+        "error": 0,
+        "warning": 0,
+        "information": 0,
+        "hint": 0,
+        "total": 0,
+    }
+
+    formatted: dict[str, Any] = {}
+    for uri, diagnostics in raw.items():
+        sorted_diags = sorted(diagnostics, key=lambda d: d.get("severity", 99))
+        items: list[dict[str, Any]] = []
+        summary = dict(default_summary)
+
+        for diag in sorted_diags:
+            severity = diag.get("severity")
+            severity_name = severity_names.get(severity, "unknown")
+            summary[severity_name] = summary.get(severity_name, 0) + 1
+            summary["total"] += 1
+
+            item: dict[str, Any] = {
+                "severity": severity_name,
+                "message": diag.get("message", ""),
+                "range": diag.get("range", {}),
+            }
+            if "source" in diag:
+                item["source"] = diag["source"]
+            if "code" in diag:
+                item["code"] = diag["code"]
+            items.append(item)
+
+        formatted[uri] = {"summary": summary, "diagnostics": items}
+    return formatted
 
 
 def _lsp_result(result: Any) -> dict[str, Any]:
@@ -588,6 +644,14 @@ async def lsp_diagnostics(file_path: str | None = None) -> dict[str, Any]:
     **When to use**: After lsp_change to check for errors, like IDE real-time
     linting. Also useful before finishing a task to ensure no errors were introduced.
 
+    **Why this matters for Scheme**: S-expressions are catastrophically sensitive to
+    bracket balance. A single missing or extra parenthesis can render the entire file
+    unparseable. Diagnostics will catch unmatched brackets, tokenizer errors, and
+    structural syntax failures with high reliability — things LLMs often miss by eye.
+    scheme-langserver 2.1.2 restored clear bracket-mismatch diagnostics
+    (`unclosed parenthesis`, `unexpected close bracket`) in the fault-tolerant tokenizer.
+    Always pull diagnostics after significant edits.
+
     **Confidence**: HIGH for basic syntax (brackets, undefined ids). MEDIUM/LOW
     for semantic errors and implementation-specific extensions (Chez-specific
     forms may be falsely flagged).
@@ -600,7 +664,7 @@ async def lsp_diagnostics(file_path: str | None = None) -> dict[str, Any]:
         client = await _ensure_initialized(file_path or os.getcwd())
         uri = _file_uri(file_path) if file_path else None
         result = client.get_diagnostics(uri)
-        return _lsp_result(result)
+        return _lsp_result(_format_diagnostics(result))
     except Exception as exc:
         return _lsp_error(exc)
 
