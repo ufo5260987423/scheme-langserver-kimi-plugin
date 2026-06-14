@@ -101,7 +101,7 @@ Kimi 评估当前任务是否需要精确代码信息
 
 ### 为什么必须是 NixOS
 
-1. **scheme-langserver 在 NixOS 上是 first-class**：nixpkgs 中已有 `scheme-langserver` 包，安装和更新由 Nix 管理
+1. **scheme-langserver 通过 Nix 管理**：`flake.nix` 直接下载 scheme-langserver 的 GitHub Release 二进制（Linux x86_64 glibc），不依赖 nixpkgs 中的版本是否最新
 2. **Chez Scheme 的复杂性**：scheme-langserver 依赖 Chez Scheme 的 boot files 和 kernel files，Nix 能精确管理这些实现特定依赖
 3. **可复现性**：LSP 服务器的行为高度依赖运行时环境（Chez Scheme 版本、线程支持、库路径），Nix 确保开发和生产环境完全一致
 4. **本项目的目标用户**：Scheme 社区与 NixOS 社区重叠度较高，许多 Scheme 开发者使用 NixOS
@@ -110,9 +110,9 @@ Kimi 评估当前任务是否需要精确代码信息
 
 - **使用 Nix Flakes**：项目根目录必须有 `flake.nix` 和 `flake.lock`
 - **开发 shell**：`nix develop` 必须提供完整的开发环境（Python、scheme-langserver、测试工具等）
-- **scheme-langserver 来源**：优先使用 nixpkgs 中的 `scheme-langserver` 包，而非手动下载二进制
+- **scheme-langserver 来源**：`flake.nix` 优先从 GitHub Releases 下载指定版本的现成二进制（当前 pinned 为 2.1.2），其他平台回退到 nixpkgs 中的 `scheme-langserver` 包
 - **非 NixOS 兼容**：允许通过 `nix develop` 在非 NixOS 系统上开发，但**运行和测试必须在 NixOS 或 Nix 环境中完成**
-- **动态链接**：scheme-langserver 的二进制在 NixOS 上可能依赖特定版本的 glibc，必须通过 Nix 的 `patchelf` 或 `buildFHSUserEnv` 处理
+- **动态链接**：从 GitHub Releases 下载的二进制是静态链接的 glibc 版本，通常可直接运行；若使用 nixpkgs 中的动态链接版本，可能需要 `patchelf` 或 `buildFHSUserEnv` 处理
 
 ### NixOS 特有注意事项
 

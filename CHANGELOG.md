@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanded known-limitations to cover 2.1.0+ diagnostics enhancements (duplicate identifiers, unused imports, tokenizer errors) and macro auto-resolution status (experimentally correct but disabled in production).
 - Documented 2.1.1 server-side fixes: `typed-lambda/lambda` dotted-formals crash, `identifier-compare? symbol?` guard, `rename/alias` unused-import false positive, R7RS/S7 tokenizer compatibility, and `display-condition` diagnostics improvement.
 - Documented scheme-langserver 2.1.2 restoration of bracket-mismatch diagnostics (`unclosed parenthesis`, `unexpected close bracket`) in the fault-tolerant tokenizer.
+- `flake.nix` now downloads the pinned scheme-langserver release binary from GitHub Releases for Linux x86_64 glibc, instead of relying solely on the nixpkgs package version. Other platforms continue to fall back to `pkgs.scheme-langserver` when available.
 
 ## [0.1.0] - 2025-05-21
 
