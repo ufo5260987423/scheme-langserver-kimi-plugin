@@ -63,6 +63,9 @@ If a tool returns timeout (-32001), retry once; if it still fails, fall back to 
 own knowledge.
 If a tool returns "method not found" (-32601), fall back to your own knowledge and do
 NOT expose the raw error to the user.
+If the server seems stuck or you have changed configuration (e.g. cache_path) and
+want it to take effect, call lsp_restart() instead of repeatedly calling
+lsp_shutdown + lsp_initialize manually.
 
 ## Confidence Levels
 - HIGH (trust): definition, references, basic diagnostics (bracket matching, undefined id)
@@ -88,6 +91,7 @@ results as clues for further investigation, not as final verdicts.
 mcp = FastMCP("scheme-langserver-bridge", instructions=_INSTRUCTIONS)
 _client: LspClient | None = None
 _doc_manager: DocumentManager | None = None
+_root_dir: str | None = None
 _init_lock = asyncio.Lock()
 
 
@@ -268,7 +272,7 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
     directory so the language server can resolve imports and analyze
     the codebase.
     """
-    global _client, _doc_manager
+    global _client, _doc_manager, _root_dir
     crashed = getattr(_client, "_crashed", False) is True
     if _client is not None and not crashed:
         return {
@@ -293,6 +297,7 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
 
     _client = LspClient(config)
     _doc_manager = DocumentManager(_client)
+    _root_dir = root_dir
 
     crash_reporter = CrashReporter(config)
     crash_reporter.attach(_client, _doc_manager)
@@ -314,6 +319,7 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
     except Exception as exc:
         _client = None
         _doc_manager = None
+        _root_dir = None
         return _lsp_error(exc)
 
 
@@ -360,16 +366,86 @@ async def lsp_export_debug_report(output_path: str | None = None) -> dict[str, A
 @mcp.tool()
 async def lsp_shutdown() -> dict[str, Any]:
     """Gracefully shut down the scheme-langserver connection."""
-    global _client, _doc_manager
+    global _client, _doc_manager, _root_dir
     if _client is None:
         return {"content": {"warning": "LSP server was not running."}}
     try:
         await _client.stop()
         _client = None
         _doc_manager = None
+        _root_dir = None
         return {"content": {"shutdown": True}}
     except Exception as exc:
         return _lsp_error(exc)
+
+
+@mcp.tool()
+async def lsp_restart(root_dir: str | None = None) -> dict[str, Any]:
+    """Restart the scheme-langserver connection and reopen tracked documents.
+
+    Use this when you want scheme-langserver to pick up configuration changes
+    (e.g. a new `cache_path`) or when the server seems stuck but has not been
+    detected as crashed. After restarting, all currently open files are
+    re-opened automatically so the server state is restored.
+
+    Args:
+        root_dir: Project root directory. If omitted, the previously used
+            root_dir is reused; if there is none, it is inferred from open
+            documents or the current working directory.
+    """
+    global _client, _doc_manager, _root_dir
+
+    # Snapshot currently open documents so we can reopen them after restart.
+    stale_docs: dict[str, tuple[str, str]] = {}
+    if _doc_manager is not None:
+        for uri in _doc_manager.list_uris():
+            doc = _doc_manager.get(uri)
+            if doc:
+                stale_docs[uri] = (doc["language_id"], doc["text"])
+
+    # Determine the root directory for re-initialization.
+    restart_root = root_dir
+    if restart_root is None:
+        restart_root = _root_dir
+    if restart_root is None and stale_docs:
+        first_uri = next(iter(stale_docs))
+        restart_root = _infer_root_dir(first_uri.replace("file://", ""))
+    if restart_root is None:
+        restart_root = os.getcwd()
+
+    # Shut down the existing server.
+    shutdown_result = await lsp_shutdown()
+    shutdown_content = shutdown_result.get("content", {})
+    if shutdown_content.get("error"):
+        return shutdown_result
+
+    # Re-initialize.
+    init_result = await lsp_initialize(restart_root)
+    init_content = init_result.get("content", {})
+    if init_content.get("error"):
+        return init_result
+
+    # Reopen previously tracked documents.
+    reopened: list[str] = []
+    failed: list[dict[str, Any]] = []
+    if _doc_manager is not None:
+        for uri, (language_id, text) in stale_docs.items():
+            try:
+                await _doc_manager.open(uri, language_id, text)
+                reopened.append(uri)
+            except Exception as exc:
+                logger.warning("Failed to reopen %s after restart: %s", uri, exc)
+                failed.append({"uri": uri, "error": str(exc)})
+
+    return {
+        "content": {
+            "restarted": True,
+            "root_dir": restart_root,
+            "shutdown": shutdown_content.get("shutdown", False),
+            "reopened_uris": reopened,
+            "failed_to_reopen": failed,
+        }
+    }
 
 
 # ------------------------------------------------------------------

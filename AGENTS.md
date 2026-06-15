@@ -171,6 +171,7 @@ MCP Tools ↔ LSP Methods 映射：
 | `lsp_workspace_symbol` | `workspace/symbol` | 工作区符号搜索 |
 | `lsp_code_action` | `textDocument/codeAction` | 代码动作 / 快速修复 |
 | `lsp_close` | `textDocument/didClose` | 关闭文件 |
+| `lsp_restart` | `shutdown` + `initialize` + `textDocument/didOpen` | 重启 LSP 服务器并重新打开已跟踪文件 |
 | `lsp_shutdown` | `shutdown` | 优雅关闭 LSP 服务器 |
 
 ## 开发规范
@@ -211,7 +212,7 @@ MCP Tools ↔ LSP Methods 映射：
 ### 错误处理
 
 - LSP 服务器崩溃或返回错误时，MCP 工具必须返回友好的错误信息，不能抛未处理异常
-- 必须实现 LSP 服务器进程的健康检查和自动重启（通过 `lsp_shutdown` + `lsp_initialize`）
+- 必须实现 LSP 服务器进程的健康检查和自动重启（通过 `lsp_shutdown` + `lsp_initialize`，或直接调用 `lsp_restart`）
 - 所有 LSP 通信超时必须可配置（默认 30 秒，补全单独可配）
 - 子进程必须设置硬资源限制（内存、CPU）防止失控
 
@@ -289,6 +290,7 @@ python3 -m scheme_langserver_bridge
 - [ ] `lsp_complete` 能列出当前作用域的可用绑定
 - [ ] `lsp_definition` 能正确定位到定义文件和行列
 - [ ] `lsp_diagnostics` 能报告语法错误
+- [ ] `lsp_restart` 能重启服务器并恢复已打开的文件状态
 - [ ] Kimi 实际对话中能调用这些工具并基于结果回答
 
 ## 文件清单

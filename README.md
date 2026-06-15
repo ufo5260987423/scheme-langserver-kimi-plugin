@@ -270,6 +270,7 @@ All tools are prefixed with `lsp_`:
 | `lsp_open` | Open a file so the server can analyze it |
 | `lsp_change` | Push updated file contents to the server |
 | `lsp_close` | Close a file |
+| `lsp_restart` | Restart scheme-langserver and reopen tracked documents |
 | `lsp_hover` | Get type/docs for a symbol at a position |
 | `lsp_complete` | Get completion candidates at a position |
 | `lsp_definition` | Find where a symbol is defined |

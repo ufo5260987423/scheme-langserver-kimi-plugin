@@ -13,12 +13,18 @@ from scheme_langserver_bridge.lsp_client import LspError
 
 
 @pytest.fixture(autouse=True)
-def reset_global_client():
-    """Ensure _client is reset before each test."""
-    original = server_module._client
+def reset_global_state():
+    """Ensure global server state is reset before each test."""
+    original_client = server_module._client
+    original_doc_manager = server_module._doc_manager
+    original_root_dir = server_module._root_dir
     server_module._client = None
+    server_module._doc_manager = None
+    server_module._root_dir = None
     yield
-    server_module._client = original
+    server_module._client = original_client
+    server_module._doc_manager = original_doc_manager
+    server_module._root_dir = original_root_dir
 
 
 class TestEnsureClient:
@@ -76,6 +82,71 @@ class TestLspShutdown:
     async def test_warns_if_not_running(self) -> None:
         result = await server_module.lsp_shutdown()
         assert "warning" in result["content"]
+
+
+class TestLspRestart:
+    async def test_restart_initializes_when_not_running(self) -> None:
+        mock_client = MagicMock()
+        mock_client.start = AsyncMock(return_value={
+            "serverInfo": {"name": "test"},
+            "capabilities": {},
+        })
+
+        with patch("scheme_langserver_bridge.server.LspClient", return_value=mock_client):
+            result = await server_module.lsp_restart("/project/root")
+
+        assert result["content"]["restarted"] is True
+        assert result["content"]["root_dir"] == "/project/root"
+        mock_client.start.assert_awaited_once_with("/project/root")
+
+    async def test_restart_reopens_tracked_documents(self, tmp_path: Path) -> None:
+        test_file = tmp_path / "test.scm"
+        test_file.write_text("(define x 1)", encoding="utf-8")
+
+        # Initialize with a mock client and open a document.
+        mock_client = MagicMock()
+        mock_client.start = AsyncMock(return_value={
+            "serverInfo": {"name": "test"},
+            "capabilities": {},
+        })
+        mock_client.did_open = AsyncMock()
+        mock_client.did_close = AsyncMock()
+        mock_client.stop = AsyncMock()
+
+        with patch("scheme_langserver_bridge.server.LspClient", return_value=mock_client):
+            await server_module.lsp_initialize("/project/root")
+            await server_module.lsp_open(str(test_file))
+
+        # Replace the client with a fresh mock to simulate restart.
+        new_mock_client = MagicMock()
+        new_mock_client.start = AsyncMock(return_value={
+            "serverInfo": {"name": "test"},
+            "capabilities": {},
+        })
+        new_mock_client.did_open = AsyncMock()
+        new_mock_client.stop = AsyncMock()
+
+        with patch("scheme_langserver_bridge.server.LspClient", return_value=new_mock_client):
+            result = await server_module.lsp_restart()
+
+        assert result["content"]["restarted"] is True
+        assert len(result["content"]["reopened_uris"]) == 1
+        new_mock_client.did_open.assert_awaited_once()
+
+    async def test_restart_uses_provided_root_dir(self, tmp_path: Path) -> None:
+        mock_client = MagicMock()
+        mock_client.start = AsyncMock(return_value={
+            "serverInfo": {"name": "test"},
+            "capabilities": {},
+        })
+        mock_client.stop = AsyncMock()
+
+        with patch("scheme_langserver_bridge.server.LspClient", return_value=mock_client):
+            await server_module.lsp_initialize("/old/root")
+            result = await server_module.lsp_restart("/new/root")
+
+        assert result["content"]["root_dir"] == "/new/root"
+        mock_client.start.assert_awaited_with("/new/root")
 
 
 class TestLspHover:
