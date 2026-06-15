@@ -164,8 +164,12 @@ class Config:
         scheme-langserver's run.ss uses `args-fold` and ignores positional
         operands; all options must be passed as named flags. See run.ss for the
         full option list.
+
+        A workspace FASL cache directory is enabled by default (scheme-langserver
+        2.1.3+) to speed up repeated initializations of the same project.
         """
         log_path = self.log_path or str(Path(root_dir) / ".scheme-langserver.log")
+        cache_path = self.cache_path or str(Path(root_dir) / ".scheme-langserver-cache")
         cmd = [
             self.langserver_path,
             "--log-path",
@@ -176,9 +180,9 @@ class Config:
             self.type_inference,
             "--top-environment",
             self.top_environment,
+            "--cache-path",
+            cache_path,
         ]
-        if self.cache_path:
-            cmd.extend(["--cache-path", self.cache_path])
         return cmd
 
 

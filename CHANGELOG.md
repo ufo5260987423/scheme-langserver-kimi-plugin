@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Surfaces `source` and `code` fields when provided by the server (scheme-langserver 2.1.0+).
 - **scheme-langserver launch command** now uses named flags instead of positional arguments, matching `run.ss` in scheme-langserver 2.1.3+.
   - Adds `--top-environment` to the default launch flags.
-  - Adds `--cache-path` support via the `cache_path` project config field or `SCHEME_LANGSERVER_CACHE_PATH` env var (scheme-langserver 2.1.3+).
+  - Enables `--cache-path` by default for scheme-langserver 2.1.3+, using `.scheme-langserver-cache` in the project root. Override via the `cache_path` project config field or `SCHEME_LANGSERVER_CACHE_PATH` env var.
 
 ### Changed
 - Confirmed compatibility with scheme-langserver **2.1.3**.

@@ -204,6 +204,7 @@ MCP Tools ↔ LSP Methods 映射：
   4. 已知本地开发路径（项目内 `./scheme-langserver/run`、上级目录、`~/Documents/workspace/scheme-langserver/run`）
   5. **自动下载**（当 `auto_update=true` 且平台为 Linux x86_64 glibc 时）：通过 GitHub Release 静态 URL + HEAD 请求检测最新版本，缓存到 `~/.cache/scheme-langserver-bridge/versions/<version>/`
 - **日志路径**：默认使用当前工作目录下的 `.scheme-langserver.log`，可通过环境变量或项目配置覆盖
+- **FASL 缓存路径**：scheme-langserver 2.1.3+ 默认启用工作区 FASL 缓存，目录为项目根目录下的 `.scheme-langserver-cache`，可通过 `cache_path` 项目配置字段或 `SCHEME_LANGSERVER_CACHE_PATH` 环境变量覆盖
 - **项目根目录**：通过 `lsp_initialize` 工具参数传入
 - **版本检查缓存**：`~/.cache/scheme-langserver-bridge/version-check.json`，TTL 1 小时
 

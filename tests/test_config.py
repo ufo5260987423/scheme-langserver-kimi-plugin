@@ -18,6 +18,7 @@ class TestConfig:
         cmd = config.build_cmd("/project/root")
         assert cmd[0] == "/usr/bin/scheme-langserver"
         # scheme-langserver uses named flags (positional operands are ignored).
+        # --cache-path is enabled by default.
         assert cmd == [
             "/usr/bin/scheme-langserver",
             "--log-path",
@@ -28,6 +29,8 @@ class TestConfig:
             "enable",
             "--top-environment",
             "R6RS",
+            "--cache-path",
+            "/project/root/.scheme-langserver-cache",
         ]
 
     def test_build_cmd_custom_options(self) -> None:
@@ -45,6 +48,7 @@ class TestConfig:
         assert cmd[cmd.index("--multi-thread") + 1] == "disable"
         assert cmd[cmd.index("--type-inference") + 1] == "disable"
         assert cmd[cmd.index("--top-environment") + 1] == "R7RS"
+        assert cmd[cmd.index("--cache-path") + 1] == "/project/root/.scheme-langserver-cache"
 
     def test_find_langserver_from_env(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
