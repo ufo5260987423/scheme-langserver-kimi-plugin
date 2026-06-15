@@ -79,11 +79,22 @@ def _write_cached_version_info(info: dict[str, Any]) -> None:
     path.write_text(json.dumps(info, indent=2), encoding="utf-8")
 
 
+def _normalize_tag(tag: str) -> str:
+    """Normalize a GitHub release tag to a version string.
+
+    scheme-langserver switched from tags like ``2.1.2`` to ``v2.1.3``; we strip
+    the leading ``v``/``V`` so cache directories and version comparisons remain
+    consistent.
+    """
+    return tag.lstrip("vV")
+
+
 def _parse_version_from_location(location: str) -> str | None:
     """Extract tag version from a GitHub redirect Location URL.
 
-    Example:
+    Examples:
       /releases/download/2.1.0/scheme-langserver-x86_64-linux-glibc -> 2.1.0
+      /releases/download/v2.1.3/scheme-langserver-x86_64-linux-glibc -> v2.1.3
     """
     match = re.search(r"/releases/download/([^/]+)/", location)
     if match:
@@ -214,7 +225,7 @@ def get_cached_binary_path(tag: str) -> Path | None:
     asset_name = _asset_name_for_platform()
     if asset_name is None:
         return None
-    path = get_cache_dir() / "versions" / tag / asset_name
+    path = get_cache_dir() / "versions" / _normalize_tag(tag) / asset_name
     if path.exists():
         return path
     return None
@@ -231,7 +242,8 @@ def download_binary(tag: str, url: str, expected_sha256: str | None = None) -> P
             f"Unsupported platform: {platform.system()} {platform.machine()}"
         )
 
-    cache_dir = get_cache_dir() / "versions" / tag
+    version = _normalize_tag(tag)
+    cache_dir = get_cache_dir() / "versions" / version
     cache_dir.mkdir(parents=True, exist_ok=True)
     dest = cache_dir / asset_name
 
@@ -270,14 +282,15 @@ def ensure_latest_binary(auto_update: bool = True) -> tuple[str, str, dict[str, 
 
     tag = latest["tag"]
     assert tag is not None
+    version = _normalize_tag(tag)
 
     # Check if we already have this version cached.
-    cached = get_cached_binary_path(tag)
+    cached = get_cached_binary_path(version)
     if cached is not None:
         return (
             str(cached),
             "cache",
-            {"tag": tag, "latest": tag, "up_to_date": True, "note": ""},
+            {"tag": version, "latest": version, "up_to_date": True, "note": ""},
         )
 
     # Check for any older cached version.
@@ -286,7 +299,7 @@ def ensure_latest_binary(auto_update: bool = True) -> tuple[str, str, dict[str, 
         current_tag = max(all_tags, key=_semver_key)
         cached_old = get_cached_binary_path(current_tag)
         if cached_old is not None:
-            if auto_update and _semver_key(tag) > _semver_key(current_tag):
+            if auto_update and _semver_key(version) > _semver_key(current_tag):
                 # Auto-update to newer version.
                 path = download_binary(
                     tag, latest["asset_url"], latest.get("sha256")
@@ -295,10 +308,10 @@ def ensure_latest_binary(auto_update: bool = True) -> tuple[str, str, dict[str, 
                     str(path),
                     "auto-downloaded",
                     {
-                        "tag": tag,
-                        "latest": tag,
+                        "tag": version,
+                        "latest": version,
                         "up_to_date": True,
-                        "note": f"Auto-updated from {current_tag} to {tag}",
+                        "note": f"Auto-updated from {current_tag} to {version}",
                     },
                 )
             else:
@@ -308,10 +321,10 @@ def ensure_latest_binary(auto_update: bool = True) -> tuple[str, str, dict[str, 
                     "cache",
                     {
                         "tag": current_tag,
-                        "latest": tag,
+                        "latest": version,
                         "up_to_date": False,
                         "note": (
-                            f"Newer version {tag} available; "
+                            f"Newer version {version} available; "
                             f"set auto_update=true to auto-update"
                         ),
                     },
@@ -322,16 +335,17 @@ def ensure_latest_binary(auto_update: bool = True) -> tuple[str, str, dict[str, 
     return (
         str(path),
         "auto-downloaded",
-        {"tag": tag, "latest": tag, "up_to_date": True, "note": ""},
+        {"tag": version, "latest": version, "up_to_date": True, "note": ""},
     )
 
 
 def _list_cached_tags() -> list[str]:
-    """List all version tags present in the cache."""
+    """List all normalized version tags present in the cache."""
     versions_dir = get_cache_dir() / "versions"
     if not versions_dir.exists():
         return []
-    return [d.name for d in versions_dir.iterdir() if d.is_dir()]
+    tags = {_normalize_tag(d.name) for d in versions_dir.iterdir() if d.is_dir()}
+    return sorted(tags)
 
 
 def _semver_key(tag: str) -> tuple[int, ...]:

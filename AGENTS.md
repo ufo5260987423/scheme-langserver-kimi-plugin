@@ -31,7 +31,7 @@ scheme-langserver 是基于 Chez Scheme 的静态分析器，能提供以下 LLM
 | `textDocument/publishDiagnostics` | 获取**语法错误**和**语义错误**的实时列表 | Kimi 生成或修改代码后，立即知道是否有错误，及时在回复中修正 |
 | `textDocument/rename` | 获取安全重命名所需的**所有修改位置**（跨文件） | Kimi 执行重命名重构时，能一次性给出所有需要改动的位置，保证一致性 |
 | `textDocument/signatureHelp` | 获取函数调用的**参数列表**和**参数类型** | Kimi 写函数调用时，知道每个参数应该是什么类型，减少类型不匹配的错误 |
-| `workspace/symbol` | 获取工作区中所有匹配的符号（**需 scheme-langserver ≥ 2.1.0 (tested up to 2.1.2)**） | Kimi 需要在整个项目中搜索某个函数或变量时，快速定位 |
+| `workspace/symbol` | 获取工作区中所有匹配的符号（**需 scheme-langserver ≥ 2.1.0 (tested up to 2.1.3)**） | Kimi 需要在整个项目中搜索某个函数或变量时，快速定位 |
 | 类型推断（实验性） | 获取复杂表达式的**推导类型** | Kimi 分析高阶函数、宏展开后的表达式时，有类型信息作为依据，推理更可靠 |
 
 ### scheme-langserver 的能力边界（Kimi 必须知道）
@@ -47,7 +47,7 @@ scheme-langserver 的返回信息**并非完全可靠**。Kimi 在调用 LSP 工
 - **活跃开发中，有 bug**：作者多次在 release note 和文档中承认"There're many many bugs"
 - **多线程机制增加不确定性**：`-m enable` 开启多线程后，竞态条件可能导致偶发的分析结果不一致
 - **工具可用性受服务器版本限制**：
-  - `workspace/symbol` 需要 **scheme-langserver ≥ 2.1.0 (tested up to 2.1.2)**（此前版本不支持）
+  - `workspace/symbol` 需要 **scheme-langserver ≥ 2.1.0 (tested up to 2.1.3)**（此前版本不支持）
   - `textDocument/rename`、`textDocument/signatureHelp`、`textDocument/codeAction` 当前仅在 scheme-langserver 的 Roadmap 中，服务器可能返回 "method not found" 或行为不完整
 - **诊断范围持续扩展（2.1.0+）**：新增重复标识符检测、未使用导入检测、tokenizer 语法错误等；诊断信息现在包含标准 `source` 和 `code` 字段
 
@@ -56,7 +56,7 @@ scheme-langserver 的返回信息**并非完全可靠**。Kimi 在调用 LSP 工
 1. **交叉验证**：LSP 返回的信息应与 Kimi 自身的训练知识对照。如果两者矛盾，优先相信自己的训练数据，但把 LSP 结果作为疑点进一步排查
 2. **置信度分级**：
    - **高置信度**：`definition`（跳转到定义）、`references`（查找引用）、基础语法 `diagnostics`（括号匹配、未定义标识符、tokenizer 错误）
-   - **中置信度**：`completion`（补全列表可能漏掉宏生成的标识符）；`workspace/symbol`（≥ 2.1.0 / tested up to 2.1.2，跨文件符号搜索准确度取决于索引完整性）
+   - **中置信度**：`completion`（补全列表可能漏掉宏生成的标识符）；`workspace/symbol`（≥ 2.1.0 / tested up to 2.1.3，跨文件符号搜索准确度取决于索引完整性）
    - **低置信度**：`type inference`（实验性）、宏相关的 `hover` 信息、`rename` / `signatureHelp` / `codeAction`（服务器端仍在 Roadmap 阶段）
 3. **括号灾难防控（Scheme 特有）**：S-expression 的括号敏感是致命问题。Kimi 每次生成或修改 Scheme 代码后，**必须**通过 `lsp_diagnostics` 拉取诊断信息来验证括号匹配和 tokenizer 错误。LLM 靠肉眼精确匹配多层嵌套括号的能力极差，而 scheme-langserver 对这类结构性错误的检测是高置信度的。不要把未验证括号匹配的代码直接交给用户。
 4. **fallback 机制**：当 LSP 返回异常、超时或明显荒谬的结果时，Kimi 应优雅降级，直接基于自身知识回答，而不是把错误信息传给用户
@@ -110,7 +110,7 @@ Kimi 评估当前任务是否需要精确代码信息
 
 - **使用 Nix Flakes**：项目根目录必须有 `flake.nix` 和 `flake.lock`
 - **开发 shell**：`nix develop` 必须提供完整的开发环境（Python、scheme-langserver、测试工具等）
-- **scheme-langserver 来源**：`flake.nix` 优先从 GitHub Releases 下载指定版本的现成二进制（当前 pinned 为 2.1.2），其他平台回退到 nixpkgs 中的 `scheme-langserver` 包
+- **scheme-langserver 来源**：`flake.nix` 优先从 GitHub Releases 下载指定版本的现成二进制（当前 pinned 为 2.1.3），其他平台回退到 nixpkgs 中的 `scheme-langserver` 包
 - **非 NixOS 兼容**：允许通过 `nix develop` 在非 NixOS 系统上开发，但**运行和测试必须在 NixOS 或 Nix 环境中完成**
 - **动态链接**：从 GitHub Releases 下载的二进制是静态链接的 glibc 版本，通常可直接运行；若使用 nixpkgs 中的动态链接版本，可能需要 `patchelf` 或 `buildFHSUserEnv` 处理
 

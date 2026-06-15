@@ -10,6 +10,17 @@ import pytest
 from scheme_langserver_bridge import auto_update
 
 
+class TestNormalizeTag:
+    def test_strips_v_prefix(self) -> None:
+        assert auto_update._normalize_tag("v2.1.3") == "2.1.3"
+
+    def test_strips_uppercase_v_prefix(self) -> None:
+        assert auto_update._normalize_tag("V2.1.3") == "2.1.3"
+
+    def test_no_prefix_unchanged(self) -> None:
+        assert auto_update._normalize_tag("2.1.2") == "2.1.2"
+
+
 class TestParseVersionFromLocation:
     def test_standard_github_location(self) -> None:
         loc = (
@@ -17,6 +28,13 @@ class TestParseVersionFromLocation:
             "releases/download/2.1.0/scheme-langserver-x86_64-linux-glibc"
         )
         assert auto_update._parse_version_from_location(loc) == "2.1.0"
+
+    def test_v_prefixed_github_location(self) -> None:
+        loc = (
+            "https://github.com/ufo5260987423/scheme-langserver/"
+            "releases/download/v2.1.3/scheme-langserver-x86_64-linux-glibc"
+        )
+        assert auto_update._parse_version_from_location(loc) == "v2.1.3"
 
     def test_no_match_returns_none(self) -> None:
         assert auto_update._parse_version_from_location("/some/other/path") is None
@@ -44,6 +62,17 @@ class TestCacheDir:
     def test_fallback_to_home(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
         assert auto_update.get_cache_dir() == Path.home() / ".cache" / "scheme-langserver-bridge"
+
+    def test_get_cached_binary_path_normalizes_v_prefix(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            auto_update, "get_cache_dir", lambda: tmp_path / "cache"
+        )
+        bin_path = tmp_path / "cache" / "versions" / "2.1.3" / "scheme-langserver-x86_64-linux-glibc"
+        bin_path.parent.mkdir(parents=True)
+        bin_path.write_text("fake binary", encoding="utf-8")
+        assert auto_update.get_cached_binary_path("v2.1.3") == bin_path
 
 
 class TestReadWriteCachedVersionInfo:
@@ -89,6 +118,24 @@ class TestListCachedTags:
         (versions_dir / "2.0.0").mkdir(parents=True)
         (versions_dir / "2.1.0").mkdir(parents=True)
         assert set(auto_update._list_cached_tags()) == {"2.0.0", "2.1.0"}
+
+    def test_normalizes_v_prefixed_dirs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            auto_update, "get_cache_dir", lambda: tmp_path / "cache"
+        )
+        versions_dir = tmp_path / "cache" / "versions"
+        (versions_dir / "v2.1.3").mkdir(parents=True)
+        (versions_dir / "2.1.2").mkdir(parents=True)
+        assert set(auto_update._list_cached_tags()) == {"2.1.2", "2.1.3"}
+
+    def test_deduplicates_equivalent_dirs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            auto_update, "get_cache_dir", lambda: tmp_path / "cache"
+        )
+        versions_dir = tmp_path / "cache" / "versions"
+        (versions_dir / "2.1.3").mkdir(parents=True)
+        (versions_dir / "v2.1.3").mkdir(parents=True)
+        assert auto_update._list_cached_tags() == ["2.1.3"]
 
 
 class TestEnsureLatestBinary:
@@ -144,3 +191,30 @@ class TestEnsureLatestBinary:
         assert source == "cache"
         assert vinfo["up_to_date"] is False
         assert "2.1.0" in vinfo["note"]
+
+    def test_uses_cache_when_v_prefixed_tag(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            auto_update, "get_cache_dir", lambda: tmp_path / "cache"
+        )
+        monkeypatch.setattr(
+            auto_update,
+            "check_latest_version",
+            lambda: {
+                "tag": "v2.1.3",
+                "asset_url": "http://example.com/bin",
+                "sha256": None,
+                "error": None,
+            },
+        )
+        # Pre-populate cache under normalized directory name.
+        bin_path = tmp_path / "cache" / "versions" / "2.1.3" / "scheme-langserver-x86_64-linux-glibc"
+        bin_path.parent.mkdir(parents=True)
+        bin_path.write_text("fake binary", encoding="utf-8")
+
+        path, source, vinfo = auto_update.ensure_latest_binary(auto_update=True)
+        assert path == str(bin_path)
+        assert source == "cache"
+        assert vinfo["tag"] == "2.1.3"
+        assert vinfo["up_to_date"] is True

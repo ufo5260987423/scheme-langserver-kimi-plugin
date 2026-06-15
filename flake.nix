@@ -13,7 +13,7 @@
       # download the static glibc binary directly so we are not blocked on
       # nixpkgs updates. Other platforms fall back to the nixpkgs package if
       # it is available.
-      schemeLangserverVersion = "2.1.2";
+      schemeLangserverVersion = "v2.1.3";
 
       # Build the Python package for a given system
       mkPackage = system:
@@ -63,7 +63,7 @@
             src = pkgs.fetchurl {
               url = "https://github.com/ufo5260987423/scheme-langserver/releases/download/${schemeLangserverVersion}/scheme-langserver-x86_64-linux-glibc";
               # SRI hash obtained from the GitHub release asset digest.
-              hash = "sha256-pheo6HU8wqmpGjpoChQiYzAIXzfW6gKzqgE69CCJv2Y=";
+              hash = "sha256-Wz4WCraRveHXIVYxEpr0Vfl4j4WRN7vX/MbSVd2dJHc=";
             };
 
             dontUnpack = true;

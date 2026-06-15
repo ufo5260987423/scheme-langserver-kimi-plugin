@@ -32,7 +32,7 @@ bridge.
   or extra parenthesis can corrupt the entire file structure. LLMs are poor at bracket
   matching by eye. Always pull diagnostics after editing to catch tokenizer errors,
   unmatched brackets, and structural disasters before they propagate.
-- scheme-langserver 2.1.2 restores bracket-mismatch diagnostics in the fault-tolerant
+- scheme-langserver 2.1.2+ restores bracket-mismatch diagnostics in the fault-tolerant
   tokenizer (e.g. `unclosed parenthesis`, `unexpected close bracket`), making
   `lsp_diagnostics` even more reliable for catching these structural errors.
 
@@ -50,7 +50,7 @@ Treat this bridge like an IDE/editor, not a query API.
 4. After syncing, call lsp_diagnostics to check for errors (like IDE real-time linting).
    **This is especially important in Scheme**: diagnostics will catch unmatched parentheses,
    tokenizer failures, and other structural errors that are catastrophic and hard to spot
-   manually. scheme-langserver 2.1.2 specifically restored clear bracket-mismatch diagnostics
+   manually. scheme-langserver 2.1.2+ specifically restored clear bracket-mismatch diagnostics
    (`unclosed parenthesis`, `unexpected close bracket`) in the fault-tolerant tokenizer.
 5. Iterate: edit -> lsp_change -> lsp_diagnostics -> edit -> ...
 6. Only call lsp_close when you are truly done with a file, or at session end.
@@ -175,7 +175,7 @@ def _format_diagnostics(raw: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     Sorts diagnostics by severity (error > warning > information > hint) and
     surfaces the standard LSP `source` and `code` fields introduced in
     scheme-langserver 2.1.0+. This makes it easier for Kimi to prioritize
-    structural errors such as unmatched brackets, which scheme-langserver 2.1.2
+    structural errors such as unmatched brackets, which scheme-langserver 2.1.2+
     reports explicitly (e.g. ``unclosed parenthesis``).
     """
     severity_names = {1: "error", 2: "warning", 3: "information", 4: "hint"}
@@ -648,7 +648,7 @@ async def lsp_diagnostics(file_path: str | None = None) -> dict[str, Any]:
     bracket balance. A single missing or extra parenthesis can render the entire file
     unparseable. Diagnostics will catch unmatched brackets, tokenizer errors, and
     structural syntax failures with high reliability — things LLMs often miss by eye.
-    scheme-langserver 2.1.2 restored clear bracket-mismatch diagnostics
+    scheme-langserver 2.1.2+ restored clear bracket-mismatch diagnostics
     (`unclosed parenthesis`, `unexpected close bracket`) in the fault-tolerant tokenizer.
     Always pull diagnostics after significant edits.
 

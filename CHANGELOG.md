@@ -30,14 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Surfaces `source` and `code` fields when provided by the server (scheme-langserver 2.1.0+).
 
 ### Changed
-- Confirmed compatibility with scheme-langserver **2.1.2**.
+- Confirmed compatibility with scheme-langserver **2.1.3**.
 - Updated documentation to reflect server-side feature availability:
-  - `workspace/symbol` requires scheme-langserver ≥ 2.1.0 (no protocol changes in 2.1.2).
+  - `workspace/symbol` requires scheme-langserver ≥ 2.1.0 (no protocol changes in 2.1.3).
   - `textDocument/rename`, `textDocument/signatureHelp`, and `textDocument/codeAction` are exposed by the bridge but remain on the scheme-langserver roadmap; the server may not yet implement them.
 - Expanded known-limitations to cover 2.1.0+ diagnostics enhancements (duplicate identifiers, unused imports, tokenizer errors) and macro auto-resolution status (experimentally correct but disabled in production).
 - Documented 2.1.1 server-side fixes: `typed-lambda/lambda` dotted-formals crash, `identifier-compare? symbol?` guard, `rename/alias` unused-import false positive, R7RS/S7 tokenizer compatibility, and `display-condition` diagnostics improvement.
-- Documented scheme-langserver 2.1.2 restoration of bracket-mismatch diagnostics (`unclosed parenthesis`, `unexpected close bracket`) in the fault-tolerant tokenizer.
-- `flake.nix` now downloads the pinned scheme-langserver release binary from GitHub Releases for Linux x86_64 glibc, instead of relying solely on the nixpkgs package version. Other platforms continue to fall back to `pkgs.scheme-langserver` when available.
+- Documented scheme-langserver 2.1.2 restoration of bracket-mismatch diagnostics (`unclosed parenthesis`, `unexpected close bracket`) in the fault-tolerant tokenizer; this capability remains in 2.1.3.
+- `flake.nix` now downloads the pinned scheme-langserver release binary from GitHub Releases for Linux x86_64 glibc, instead of relying solely on the nixpkgs package version. The pinned version is now **v2.1.3**; other platforms continue to fall back to `pkgs.scheme-langserver` when available.
 
 ## [0.1.0] - 2025-05-21
 
