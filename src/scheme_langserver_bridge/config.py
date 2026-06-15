@@ -22,6 +22,7 @@ class Config:
     multi_thread: str = "enable"
     type_inference: str = "enable"
     top_environment: str = "R6RS"
+    cache_path: str | None = None
     debug: str = "disable"
     timeout: float = 30.0
     completion_timeout: float = 30.0
@@ -50,6 +51,7 @@ class Config:
         multi_thread = os.environ.get("SCHEME_LANGSERVER_MULTI_THREAD", "enable")
         type_inference = os.environ.get("SCHEME_LANGSERVER_TYPE_INFERENCE", "enable")
         top_environment = os.environ.get("SCHEME_LANGSERVER_TOP_ENVIRONMENT", "R6RS")
+        cache_path = os.environ.get("SCHEME_LANGSERVER_CACHE_PATH") or None
         debug = os.environ.get("SCHEME_LANGSERVER_DEBUG", "disable")
         timeout = _env_float("SCHEME_LANGSERVER_TIMEOUT", 30.0)
         completion_timeout = _env_float("SCHEME_LANGSERVER_COMPLETION_TIMEOUT", 30.0)
@@ -76,6 +78,8 @@ class Config:
             type_inference = str(proj_cfg["type_inference"])
         if "top_environment" in proj_cfg:
             top_environment = str(proj_cfg["top_environment"])
+        if "cache_path" in proj_cfg:
+            cache_path = str(proj_cfg["cache_path"]) or None
         if "auto_update" in proj_cfg:
             auto_update = bool(proj_cfg["auto_update"])
 
@@ -120,6 +124,7 @@ class Config:
             multi_thread=multi_thread,
             type_inference=type_inference,
             top_environment=top_environment,
+            cache_path=cache_path,
             debug=debug,
             timeout=timeout,
             completion_timeout=completion_timeout,
@@ -156,17 +161,24 @@ class Config:
     def build_cmd(self, root_dir: str) -> list[str]:
         """Build the command to launch scheme-langserver.
 
-        scheme-langserver expects positional arguments:
-            <log-path> <multi-thread> <type-inference>
-        Not flag-style arguments.
+        scheme-langserver's run.ss uses `args-fold` and ignores positional
+        operands; all options must be passed as named flags. See run.ss for the
+        full option list.
         """
         log_path = self.log_path or str(Path(root_dir) / ".scheme-langserver.log")
         cmd = [
             self.langserver_path,
+            "--log-path",
             log_path,
+            "--multi-thread",
             self.multi_thread,
+            "--type-inference",
             self.type_inference,
+            "--top-environment",
+            self.top_environment,
         ]
+        if self.cache_path:
+            cmd.extend(["--cache-path", self.cache_path])
         return cmd
 
 

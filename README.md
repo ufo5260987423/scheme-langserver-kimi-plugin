@@ -110,6 +110,7 @@ langserver_path = "/nix/store/.../bin/scheme-langserver"
 multi_thread = "enable"
 type_inference = "enable"
 top_environment = "R6RS"
+cache_path = ".scheme-langserver-cache"
 auto_update = true
 ```
 
@@ -122,6 +123,7 @@ Supported fields:
 | `type_inference` | string | `enable` / `disable` |
 | `top_environment` | string | `R6RS` / `R7RS` / `s7` / `goldfish` |
 | `log_path` | string | Override the log file path |
+| `cache_path` | string | Directory for workspace FASL cache (scheme-langserver 2.1.3+) |
 | `auto_update` | bool | Allow auto-download when no executable is found |
 
 ### Auto-download
@@ -143,6 +145,7 @@ If no scheme-langserver executable is found locally, the bridge can **automatica
 | `SCHEME_LANGSERVER_MULTI_THREAD` | Multi-threading `enable` / `disable` | `enable` |
 | `SCHEME_LANGSERVER_TYPE_INFERENCE` | Type inference `enable` / `disable` | `enable` |
 | `SCHEME_LANGSERVER_TOP_ENVIRONMENT` | Top-level environment: `R6RS` / `R7RS` / `s7` / `goldfish` | `R6RS` |
+| `SCHEME_LANGSERVER_CACHE_PATH` | Directory for workspace FASL cache (scheme-langserver 2.1.3+) | disabled |
 | `SCHEME_LANGSERVER_TIMEOUT` | Request timeout in seconds | `30.0` |
 | `SCHEME_LANGSERVER_COMPLETION_TIMEOUT` | Completion request timeout in seconds | `30.0` |
 | `SCHEME_LANGSERVER_MAX_MEMORY_MB` | Sub-process memory limit in MB | `1024` |

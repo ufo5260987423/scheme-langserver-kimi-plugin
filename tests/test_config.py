@@ -17,12 +17,18 @@ class TestConfig:
         )
         cmd = config.build_cmd("/project/root")
         assert cmd[0] == "/usr/bin/scheme-langserver"
-        # scheme-langserver expects positional arguments:
-        # <log-path> <multi-thread> <type-inference>
-        assert cmd[1] == "/tmp/test.log"
-        assert cmd[2] == "enable"
-        assert cmd[3] == "enable"
-        assert len(cmd) == 4
+        # scheme-langserver uses named flags (positional operands are ignored).
+        assert cmd == [
+            "/usr/bin/scheme-langserver",
+            "--log-path",
+            "/tmp/test.log",
+            "--multi-thread",
+            "enable",
+            "--type-inference",
+            "enable",
+            "--top-environment",
+            "R6RS",
+        ]
 
     def test_build_cmd_custom_options(self) -> None:
         config = Config(
@@ -34,10 +40,11 @@ class TestConfig:
             debug="enable",
         )
         cmd = config.build_cmd("/project/root")
-        assert cmd[1].endswith(".scheme-langserver.log")
-        assert cmd[2] == "disable"
-        assert cmd[3] == "disable"
-        assert len(cmd) == 4
+        assert cmd[0] == "/bin/run"
+        assert cmd[cmd.index("--log-path") + 1].endswith(".scheme-langserver.log")
+        assert cmd[cmd.index("--multi-thread") + 1] == "disable"
+        assert cmd[cmd.index("--type-inference") + 1] == "disable"
+        assert cmd[cmd.index("--top-environment") + 1] == "R7RS"
 
     def test_find_langserver_from_env(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -101,6 +108,26 @@ class TestConfig:
         monkeypatch.setenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", "not_a_number")
         config = Config.load(root_dir=str(tmp_path))
         assert config.max_memory_mb == 1024
+
+    def test_build_cmd_with_cache_path(self) -> None:
+        config = Config(
+            langserver_path="/usr/bin/scheme-langserver",
+            log_path="/tmp/test.log",
+            cache_path="/tmp/scheme-cache",
+        )
+        cmd = config.build_cmd("/project/root")
+        idx = cmd.index("--cache-path")
+        assert cmd[idx + 1] == "/tmp/scheme-cache"
+
+    def test_cache_path_from_env(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        fake_bin = tmp_path / "run"
+        fake_bin.touch()
+        monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
+        monkeypatch.setenv("SCHEME_LANGSERVER_CACHE_PATH", "/env/cache")
+        config = Config.load(root_dir=str(tmp_path))
+        assert config.cache_path == "/env/cache"
 
 
 class TestFindAkkuLibdirs:
