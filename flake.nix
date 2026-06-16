@@ -8,13 +8,6 @@
       supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
 
-      # Pin the scheme-langserver release version we want to provide.
-      # Prebuilt binaries are published on GitHub Releases; on Linux x86_64 we
-      # download the static glibc binary directly so we are not blocked on
-      # nixpkgs updates. Other platforms fall back to the nixpkgs package if
-      # it is available.
-      schemeLangserverVersion = "v2.1.3";
-
       # Build the Python package for a given system
       mkPackage = system:
         let
@@ -51,62 +44,29 @@
             mainProgram = "scheme-langserver-bridge";
           };
         };
-
-      # scheme-langserver from a GitHub Release binary (Linux x86_64 glibc).
-      # For other systems we fall back to nixpkgs.
-      mkSchemeLangserver = { pkgs, system }:
-        if system == "x86_64-linux" then
-          pkgs.stdenvNoCC.mkDerivation {
-            pname = "scheme-langserver";
-            version = schemeLangserverVersion;
-
-            src = pkgs.fetchurl {
-              url = "https://github.com/ufo5260987423/scheme-langserver/releases/download/${schemeLangserverVersion}/scheme-langserver-x86_64-linux-glibc";
-              # SRI hash obtained from the GitHub release asset digest.
-              hash = "sha256-Wz4WCraRveHXIVYxEpr0Vfl4j4WRN7vX/MbSVd2dJHc=";
-            };
-
-            dontUnpack = true;
-
-            installPhase = ''
-              mkdir -p $out/bin
-              cp $src $out/bin/scheme-langserver
-              chmod +x $out/bin/scheme-langserver
-            '';
-
-            meta = {
-              description = "scheme-langserver ${schemeLangserverVersion} from GitHub Releases";
-              license = pkgs.lib.licenses.mit;
-              platforms = [ "x86_64-linux" ];
-              mainProgram = "scheme-langserver";
-            };
-          }
-        else
-          pkgs.scheme-langserver or null;
     in
     {
       devShells = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          pythonEnv = pkgs.python313;
-          schemeLangserver = mkSchemeLangserver { inherit pkgs system; };
         in
         {
           default = pkgs.mkShell {
             packages = [
-              pythonEnv
+              pkgs.python313
               pkgs.uv
-            ] ++ pkgs.lib.optional (schemeLangserver != null) schemeLangserver;
+            ];
 
             shellHook = ''
               echo "scheme-langserver-bridge dev shell"
               echo "Python: $(python3 --version)"
               echo "uv: $(uv --version)"
-              if command -v scheme-langserver &>/dev/null; then
-                echo "scheme-langserver: $(scheme-langserver --help 2>&1 | head -1)"
-              else
-                echo "scheme-langserver: not in PATH (set SCHEME_LANGSERVER_PATH to your binary)"
-              fi
+              echo ""
+              echo "scheme-langserver is NOT bundled in this shell."
+              echo "You can:"
+              echo "  - install it via nixpkgs: nix shell nixpkgs#scheme-langserver"
+              echo "  - let the bridge auto-download it on first use (default behavior)"
+              echo "  - set SCHEME_LANGSERVER_PATH or pass langserver_path to lsp_initialize"
             '';
           };
         });
