@@ -157,7 +157,7 @@ MCP Tools ↔ LSP Methods 映射：
 
 | MCP Tool | LSP Method | 说明 |
 |---------|-----------|------|
-| `lsp_initialize` | `initialize` | 初始化 LSP 连接，传入项目根目录 |
+| `lsp_initialize` | `initialize` | 初始化 LSP 连接，传入项目根目录；可指定 `langserver_path` 切换可执行文件 |
 | `lsp_open` | `textDocument/didOpen` | 打开文件，通知 LSP 文件内容 |
 | `lsp_change` | `textDocument/didChange` | 文件内容变更（全量同步） |
 | `lsp_hover` | `textDocument/hover` | 获取光标处符号信息 |
@@ -171,7 +171,7 @@ MCP Tools ↔ LSP Methods 映射：
 | `lsp_workspace_symbol` | `workspace/symbol` | 工作区符号搜索 |
 | `lsp_code_action` | `textDocument/codeAction` | 代码动作 / 快速修复 |
 | `lsp_close` | `textDocument/didClose` | 关闭文件 |
-| `lsp_restart` | `shutdown` + `initialize` + `textDocument/didOpen` | 重启 LSP 服务器并重新打开已跟踪文件 |
+| `lsp_restart` | `shutdown` + `initialize` + `textDocument/didOpen` | 重启 LSP 服务器并重新打开已跟踪文件；可指定 `langserver_path` 切换可执行文件 |
 | `lsp_shutdown` | `shutdown` | 优雅关闭 LSP 服务器 |
 
 ## 开发规范
@@ -207,6 +207,7 @@ MCP Tools ↔ LSP Methods 映射：
 - **日志路径**：默认使用当前工作目录下的 `.scheme-langserver.log`，可通过环境变量或项目配置覆盖
 - **FASL 缓存路径**：scheme-langserver 2.1.3+ 默认启用工作区 FASL 缓存，目录为项目根目录下的 `.scheme-langserver-cache`，可通过 `cache_path` 项目配置字段或 `SCHEME_LANGSERVER_CACHE_PATH` 环境变量覆盖
 - **项目根目录**：通过 `lsp_initialize` 工具参数传入
+- **可执行文件切换**：`lsp_initialize` 和 `lsp_restart` 支持 `langserver_path` 参数，可覆盖环境变量和项目配置，用于调试 scheme-langserver 本地构建
 - **版本检查缓存**：`~/.cache/scheme-langserver-bridge/version-check.json`，TTL 1 小时
 
 ### 错误处理
@@ -291,6 +292,7 @@ python3 -m scheme_langserver_bridge
 - [ ] `lsp_definition` 能正确定位到定义文件和行列
 - [ ] `lsp_diagnostics` 能报告语法错误
 - [ ] `lsp_restart` 能重启服务器并恢复已打开的文件状态
+- [ ] `lsp_restart(langserver_path=...)` 能切换到另一个 scheme-langserver 可执行文件
 - [ ] Kimi 实际对话中能调用这些工具并基于结果回答
 
 ## 文件清单

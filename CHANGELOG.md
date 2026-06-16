@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Adds `--top-environment` to the default launch flags.
   - Enables `--cache-path` by default for scheme-langserver 2.1.3+, using `.scheme-langserver-cache` in the project root. Override via the `cache_path` project config field or `SCHEME_LANGSERVER_CACHE_PATH` env var.
 - New MCP tool `lsp_restart(root_dir)` restarts scheme-langserver and automatically reopens all previously tracked documents. Useful for applying configuration changes or recovering from a stuck server.
+- `lsp_initialize` and `lsp_restart` now accept an optional `langserver_path` argument. When provided, it overrides environment variables and project config, letting the agent switch scheme-langserver executables at runtime (e.g. to test a local development build).
 
 ### Changed
 - Confirmed compatibility with scheme-langserver **2.1.3**.

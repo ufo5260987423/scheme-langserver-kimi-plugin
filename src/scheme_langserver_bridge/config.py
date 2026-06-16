@@ -36,14 +36,24 @@ class Config:
     server_source: str = "unknown"
 
     @classmethod
-    def load(cls, root_dir: str | None = None) -> Config:
+    def load(
+        cls, root_dir: str | None = None, langserver_path_override: str | None = None
+    ) -> Config:
         """Load configuration from project config, environment variables, and defaults.
 
         If no scheme-langserver executable is found locally, attempts to
         auto-download the latest release (unless disabled).
+
+        Args:
+            root_dir: Project root directory for loading project config.
+            langserver_path_override: If provided, use this executable path directly
+                and skip discovery/auto-download. Useful for switching between
+                scheme-langserver builds at runtime.
         """
         # Start with defaults and env vars.
-        langserver_path = os.environ.get("SCHEME_LANGSERVER_PATH", "")
+        langserver_path = langserver_path_override or os.environ.get(
+            "SCHEME_LANGSERVER_PATH", ""
+        )
         log_path = os.environ.get("SCHEME_LANGSERVER_LOG_PATH")
         if not log_path:
             log_path = str(Path.cwd() / ".scheme-langserver.log")
@@ -67,8 +77,9 @@ class Config:
             if proj_cfg:
                 logger.info("Loaded project config from %s", root_dir)
 
-        # Project config overrides env vars.
-        if "langserver_path" in proj_cfg:
+        # Project config overrides env vars, but an explicit tool argument
+        # overrides everything.
+        if langserver_path_override is None and "langserver_path" in proj_cfg:
             langserver_path = str(proj_cfg["langserver_path"])
         if "log_path" in proj_cfg:
             log_path = str(proj_cfg["log_path"])
@@ -88,7 +99,12 @@ class Config:
         version_info: dict[str, Any] = {}
 
         if langserver_path and Path(langserver_path).exists():
-            source = "project-config" if "langserver_path" in proj_cfg else "env-var"
+            if langserver_path_override is not None:
+                source = "tool-arg"
+            elif "langserver_path" in proj_cfg:
+                source = "project-config"
+            else:
+                source = "env-var"
         else:
             # Try discovery (PATH, known paths).
             discovered = cls._try_discover()
@@ -137,9 +153,9 @@ class Config:
         )
 
     @classmethod
-    def from_env(cls) -> Config:
+    def from_env(cls, langserver_path_override: str | None = None) -> Config:
         """Legacy entry point for tests that don't supply a root_dir."""
-        return cls.load(root_dir=None)
+        return cls.load(root_dir=None, langserver_path_override=langserver_path_override)
 
     @staticmethod
     def _try_discover() -> str | None:

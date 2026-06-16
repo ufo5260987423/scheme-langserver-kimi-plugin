@@ -260,6 +260,18 @@ And gets the inferred type signature and documentation:
 }
 ```
 
+### 4. Switching scheme-langserver executables
+
+To test a local development build of scheme-langserver, pass `langserver_path` to
+`lsp_initialize` or `lsp_restart`:
+
+```
+lsp_restart(langserver_path="/home/dev/scheme-langserver/run")
+```
+
+The bridge will use that executable and reopen all tracked documents. This is
+useful when iterating on scheme-langserver itself.
+
 ## Available MCP Tools
 
 All tools are prefixed with `lsp_`:

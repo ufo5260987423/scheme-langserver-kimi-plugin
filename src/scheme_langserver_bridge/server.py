@@ -63,9 +63,10 @@ If a tool returns timeout (-32001), retry once; if it still fails, fall back to 
 own knowledge.
 If a tool returns "method not found" (-32601), fall back to your own knowledge and do
 NOT expose the raw error to the user.
-If the server seems stuck or you have changed configuration (e.g. cache_path) and
-want it to take effect, call lsp_restart() instead of repeatedly calling
-lsp_shutdown + lsp_initialize manually.
+If the server seems stuck, you have changed configuration (e.g. cache_path), or
+you want to switch to a different scheme-langserver executable (e.g. a local
+development build), call lsp_restart() — optionally with `langserver_path=` to
+use a specific binary. The previously open files are restored automatically.
 
 ## Confidence Levels
 - HIGH (trust): definition, references, basic diagnostics (bracket matching, undefined id)
@@ -265,12 +266,21 @@ def _lsp_error(exc: Exception) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def lsp_initialize(root_dir: str) -> dict[str, Any]:
+async def lsp_initialize(
+    root_dir: str, langserver_path: str | None = None
+) -> dict[str, Any]:
     """Initialize the scheme-langserver connection.
 
     Must be called before any other LSP tool. Provides the project root
     directory so the language server can resolve imports and analyze
     the codebase.
+
+    Args:
+        root_dir: Project root directory.
+        langserver_path: Optional path to a specific scheme-langserver executable.
+            If provided, it overrides environment variables and project config.
+            This is useful for switching between scheme-langserver builds at
+            runtime, e.g. when debugging a local development build.
     """
     global _client, _doc_manager, _root_dir
     crashed = getattr(_client, "_crashed", False) is True
@@ -291,7 +301,7 @@ async def lsp_initialize(root_dir: str) -> dict[str, Any]:
         _doc_manager = None
 
     try:
-        config = Config.load(root_dir)
+        config = Config.load(root_dir, langserver_path_override=langserver_path)
     except Exception as exc:
         return _lsp_error(exc)
 
@@ -380,18 +390,24 @@ async def lsp_shutdown() -> dict[str, Any]:
 
 
 @mcp.tool()
-async def lsp_restart(root_dir: str | None = None) -> dict[str, Any]:
+async def lsp_restart(
+    root_dir: str | None = None, langserver_path: str | None = None
+) -> dict[str, Any]:
     """Restart the scheme-langserver connection and reopen tracked documents.
 
     Use this when you want scheme-langserver to pick up configuration changes
-    (e.g. a new `cache_path`) or when the server seems stuck but has not been
-    detected as crashed. After restarting, all currently open files are
+    (e.g. a new `cache_path`), switch to a different executable, or recover
+    from a stuck server. After restarting, all currently open files are
     re-opened automatically so the server state is restored.
 
     Args:
         root_dir: Project root directory. If omitted, the previously used
             root_dir is reused; if there is none, it is inferred from open
             documents or the current working directory.
+        langserver_path: Optional path to a specific scheme-langserver
+            executable. If provided, it overrides environment variables and
+            project config. This lets you instantly switch to a local build
+            for debugging or comparison.
     """
     global _client, _doc_manager, _root_dir
 
@@ -420,7 +436,7 @@ async def lsp_restart(root_dir: str | None = None) -> dict[str, Any]:
         return shutdown_result
 
     # Re-initialize.
-    init_result = await lsp_initialize(restart_root)
+    init_result = await lsp_initialize(restart_root, langserver_path=langserver_path)
     init_content = init_result.get("content", {})
     if init_content.get("error"):
         return init_result

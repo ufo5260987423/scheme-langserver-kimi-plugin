@@ -58,6 +58,29 @@ class TestLspInitialize:
         result = await server_module.lsp_initialize("/project/root")
         assert "warning" in result["content"]
 
+    async def test_uses_provided_langserver_path(self, tmp_path: Path) -> None:
+        custom_bin = tmp_path / "custom-scheme-langserver"
+        custom_bin.touch()
+        mock_client = MagicMock()
+        mock_client.start = AsyncMock(return_value={
+            "serverInfo": {"name": "test"},
+            "capabilities": {},
+        })
+        created_configs: list[Any] = []
+
+        def capture_lsp_client(config: Any) -> MagicMock:
+            created_configs.append(config)
+            return mock_client
+
+        with patch("scheme_langserver_bridge.server.LspClient", side_effect=capture_lsp_client):
+            result = await server_module.lsp_initialize(
+                "/project/root", langserver_path=str(custom_bin)
+            )
+
+        assert result["content"]["initialized"] is True
+        assert len(created_configs) == 1
+        assert created_configs[0].langserver_path == str(custom_bin)
+
     async def test_previous_root_is_string_not_cmd(self) -> None:
         mock_client = MagicMock()
         mock_client.config.build_cmd = MagicMock(return_value=["/bin/langserver", "/log"])
@@ -147,6 +170,30 @@ class TestLspRestart:
 
         assert result["content"]["root_dir"] == "/new/root"
         mock_client.start.assert_awaited_with("/new/root")
+
+    async def test_restart_uses_provided_langserver_path(self, tmp_path: Path) -> None:
+        custom_bin = tmp_path / "custom-scheme-langserver"
+        custom_bin.touch()
+        mock_client = MagicMock()
+        mock_client.start = AsyncMock(return_value={
+            "serverInfo": {"name": "test"},
+            "capabilities": {},
+        })
+        mock_client.stop = AsyncMock()
+        created_configs: list[Any] = []
+
+        def capture_lsp_client(config: Any) -> MagicMock:
+            created_configs.append(config)
+            return mock_client
+
+        with patch("scheme_langserver_bridge.server.LspClient", side_effect=capture_lsp_client):
+            await server_module.lsp_initialize("/project/root")
+            result = await server_module.lsp_restart(langserver_path=str(custom_bin))
+
+        assert result["content"]["restarted"] is True
+        # Two LspClient instances: first init, then restart.
+        assert len(created_configs) == 2
+        assert created_configs[1].langserver_path == str(custom_bin)
 
 
 class TestLspHover:

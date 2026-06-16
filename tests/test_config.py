@@ -133,6 +133,38 @@ class TestConfig:
         config = Config.load(root_dir=str(tmp_path))
         assert config.cache_path == "/env/cache"
 
+    def test_langserver_path_override_skips_discovery(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        override_bin = tmp_path / "override-langserver"
+        override_bin.touch()
+        # Ensure no env var or discovery would otherwise succeed.
+        monkeypatch.delenv("SCHEME_LANGSERVER_PATH", raising=False)
+        config = Config.load(
+            root_dir=str(tmp_path),
+            langserver_path_override=str(override_bin),
+        )
+        assert config.langserver_path == str(override_bin)
+        assert config.server_source == "tool-arg"
+
+    def test_langserver_path_override_takes_precedence_over_project_config(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        override_bin = tmp_path / "override-langserver"
+        override_bin.touch()
+        config_bin = tmp_path / "config-langserver"
+        config_bin.touch()
+        config_file = tmp_path / ".scheme-langserver.toml"
+        config_file.write_text(f'langserver_path = "{config_bin}"', encoding="utf-8")
+        monkeypatch.delenv("SCHEME_LANGSERVER_PATH", raising=False)
+
+        config = Config.load(
+            root_dir=str(tmp_path),
+            langserver_path_override=str(override_bin),
+        )
+        assert config.langserver_path == str(override_bin)
+        assert config.server_source == "tool-arg"
+
 
 class TestFindAkkuLibdirs:
     def test_no_akku_returns_empty(self, tmp_path: Path) -> None:
