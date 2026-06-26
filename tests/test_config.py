@@ -93,6 +93,22 @@ class TestConfig:
         assert config.max_memory_mb == 512
         assert config.max_cpu_seconds == 60
 
+    def test_resource_limits_from_project_config(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        fake_bin = tmp_path / "run"
+        fake_bin.touch()
+        monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
+        monkeypatch.setenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", "512")
+        monkeypatch.setenv("SCHEME_LANGSERVER_MAX_CPU_SECONDS", "60")
+        (tmp_path / ".scheme-langserver.toml").write_text(
+            "max_memory_mb = 4096\nmax_cpu_seconds = 300\n", encoding="utf-8"
+        )
+        config = Config.load(root_dir=str(tmp_path))
+        # Project config overrides environment variables.
+        assert config.max_memory_mb == 4096
+        assert config.max_cpu_seconds == 300
+
     def test_invalid_timeout_fallback(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

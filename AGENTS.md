@@ -197,7 +197,7 @@ MCP Tools ↔ LSP Methods 映射：
   1. 项目配置 `.scheme-langserver.toml` / `.scheme-langserver.json`（位于项目根目录）
   2. 环境变量
   3. 内置默认值
-- **项目配置支持字段**：`langserver_path`、`top_environment`、`multi_thread`、`type_inference`、`log_path`、`cache_path`、`auto_update`
+- **项目配置支持字段**：`langserver_path`、`top_environment`、`multi_thread`、`type_inference`、`log_path`、`cache_path`、`auto_update`、`max_memory_mb`、`max_cpu_seconds`
 - **LSP 服务器发现链**：
   1. 项目配置中的 `langserver_path`
   2. 环境变量 `SCHEME_LANGSERVER_PATH`

@@ -22,6 +22,7 @@ _CONFIG_FILENAMES = (".scheme-langserver.toml", ".scheme-langserver.json")
 
 # Mapping from config keys to their expected types
 _BOOL_KEYS = {"auto_update"}
+_INT_KEYS = {"max_memory_mb", "max_cpu_seconds"}
 
 
 def load_project_config(root_dir: str) -> dict[str, Any]:
@@ -68,11 +69,13 @@ def _parse_config_file(path: Path) -> dict[str, Any]:
 
 
 def _normalize_values(data: dict[str, Any]) -> dict[str, Any]:
-    """Normalize config values (e.g. coerce booleans from TOML)."""
+    """Normalize config values (e.g. coerce booleans and ints from TOML)."""
     result: dict[str, Any] = {}
     for key, value in data.items():
         if key in _BOOL_KEYS:
             result[key] = _to_bool(value)
+        elif key in _INT_KEYS:
+            result[key] = _to_int(value)
         else:
             result[key] = value
     return result
@@ -85,3 +88,15 @@ def _to_bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.lower() in ("true", "1", "yes", "on")
     return bool(value)
+
+
+def _to_int(value: Any) -> int:
+    """Coerce a value to int, falling back to 0 on failure."""
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0

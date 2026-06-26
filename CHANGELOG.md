@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Project-level configuration** via `.scheme-langserver.toml` or `.scheme-langserver.json` in the project root.
-  - Supported fields: `langserver_path`, `top_environment`, `multi_thread`, `type_inference`, `log_path`, `cache_path`, `auto_update`.
+  - Supported fields: `langserver_path`, `top_environment`, `multi_thread`, `type_inference`, `log_path`, `cache_path`, `auto_update`, `max_memory_mb`, `max_cpu_seconds`.
   - Configuration priority: project config > environment variables > defaults.
 - **Auto-download** scheme-langserver from GitHub Releases when no local executable is found.
   - Uses GitHub's static redirect URL (`releases/latest/download/...`) with `HEAD` requests to detect the latest version **without consuming API rate limits**.
@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `summary` with counts for each LSP severity (`error`, `warning`, `information`, `hint`).
   - `diagnostics` sorted by severity (most severe first).
   - Surfaces `source` and `code` fields when provided by the server (scheme-langserver 2.1.0+).
+- `lsp_diagnostics` now requests fresh diagnostics via `textDocument/diagnostic` (pull model) when a specific file is queried, falling back to cached `textDocument/publishDiagnostics` (push model) notifications.
+- `lsp_open` and `lsp_diagnostics` warn when a file extension is not recognized by scheme-langserver (only `.sps`, `.sls`, `.scm`, `.ss` are analysed).
 - **scheme-langserver launch command** now uses named flags instead of positional arguments, matching `run.ss` in scheme-langserver 2.1.3+.
   - Adds `--top-environment` to the default launch flags.
   - Enables `--cache-path` by default for scheme-langserver 2.1.3+, using `.scheme-langserver-cache` in the project root. Override via the `cache_path` project config field or `SCHEME_LANGSERVER_CACHE_PATH` env var.

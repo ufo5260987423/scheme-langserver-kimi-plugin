@@ -112,6 +112,8 @@ type_inference = "enable"
 top_environment = "R6RS"
 cache_path = ".scheme-langserver-cache"
 auto_update = true
+max_memory_mb = 4096
+max_cpu_seconds = 300
 ```
 
 Supported fields:
@@ -125,6 +127,8 @@ Supported fields:
 | `log_path` | string | Override the log file path |
 | `cache_path` | string | Directory for workspace FASL cache (scheme-langserver 2.1.3+; default: `.scheme-langserver-cache` in project root) |
 | `auto_update` | bool | Allow auto-download when no executable is found |
+| `max_memory_mb` | int | Sub-process memory limit in MB (default: 1024) |
+| `max_cpu_seconds` | int | Sub-process CPU time limit in seconds (default: 180) |
 
 ### Auto-download
 

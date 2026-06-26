@@ -93,6 +93,10 @@ class Config:
             cache_path = str(proj_cfg["cache_path"]) or None
         if "auto_update" in proj_cfg:
             auto_update = bool(proj_cfg["auto_update"])
+        if "max_memory_mb" in proj_cfg:
+            max_memory_mb = int(proj_cfg["max_memory_mb"])
+        if "max_cpu_seconds" in proj_cfg:
+            max_cpu_seconds = int(proj_cfg["max_cpu_seconds"])
 
         # Resolve langserver_path.
         source = "unknown"
