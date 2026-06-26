@@ -127,7 +127,7 @@ Supported fields:
 | `log_path` | string | Override the log file path |
 | `cache_path` | string | Directory for workspace FASL cache (scheme-langserver 2.1.3+; default: `.scheme-langserver-cache` in project root) |
 | `auto_update` | bool | Allow auto-download when no executable is found |
-| `max_memory_mb` | int | Sub-process memory limit in MB (default: 1024) |
+| `max_memory_mb` | int | Sub-process memory limit in MB (default: 2048) |
 | `max_cpu_seconds` | int | Sub-process CPU time limit in seconds (default: 180) |
 
 ### Auto-download
@@ -152,7 +152,7 @@ If no scheme-langserver executable is found locally, the bridge can **automatica
 | `SCHEME_LANGSERVER_CACHE_PATH` | Directory for workspace FASL cache (scheme-langserver 2.1.3+; default: `.scheme-langserver-cache` in project root) | `.scheme-langserver-cache` in project root |
 | `SCHEME_LANGSERVER_TIMEOUT` | Request timeout in seconds | `30.0` |
 | `SCHEME_LANGSERVER_COMPLETION_TIMEOUT` | Completion request timeout in seconds | `30.0` |
-| `SCHEME_LANGSERVER_MAX_MEMORY_MB` | Sub-process memory limit in MB | `1024` |
+| `SCHEME_LANGSERVER_MAX_MEMORY_MB` | Sub-process memory limit in MB | `2048` |
 | `SCHEME_LANGSERVER_MAX_CPU_SECONDS` | Sub-process CPU time limit in seconds | `180` |
 | `SCHEME_LANGSERVER_AUTO_UPDATE` | Allow auto-download when no executable is found | `true` |
 | `SCHEME_BRIDGE_LOGLEVEL` | Bridge log level: `DEBUG` / `INFO` / `WARNING` / `ERROR` | `INFO` |
@@ -162,7 +162,7 @@ If no scheme-langserver executable is found locally, the bridge can **automatica
 
 The bridge applies **hard resource limits** to the scheme-langserver child process via Unix `setrlimit`:
 
-- **Memory** (`RLIMIT_AS`): capped at `SCHEME_LANGSERVER_MAX_MEMORY_MB` (default 1024 MB). If the server tries to allocate beyond this limit, the OS will deny the allocation.
+- **Memory** (`RLIMIT_AS`): capped at `SCHEME_LANGSERVER_MAX_MEMORY_MB` (default 2048 MB). If the server tries to allocate beyond this limit, the OS will deny the allocation.
 - **CPU time** (`RLIMIT_CPU`): capped at `SCHEME_LANGSERVER_MAX_CPU_SECONDS` (default 180 s). If the server consumes more CPU time, the kernel sends `SIGXCPU` and terminates it.
 - **Core dumps** (`RLIMIT_CORE`): disabled to avoid filling disk on crashes.
 

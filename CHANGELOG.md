@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented scheme-langserver 2.1.2 restoration of bracket-mismatch diagnostics (`unclosed parenthesis`, `unexpected close bracket`) in the fault-tolerant tokenizer; this capability remains in 2.1.3.
 - `flake.nix` no longer bundles scheme-langserver. The dev shell provides only the Bridge development environment (Python, uv); scheme-langserver is discovered at runtime or downloaded automatically by the Bridge.
 - `config.build_cmd()` now passes scheme-langserver options as named flags (`--log-path`, `--multi-thread`, `--type-inference`, `--top-environment`, optional `--cache-path`) because `run.ss` ignores positional operands.
+- Default `max_memory_mb` raised from 1024 MB to 2048 MB to better accommodate large Scheme workspaces.
 
 ## [0.1.0] - 2025-05-21
 

@@ -26,7 +26,7 @@ class Config:
     debug: str = "disable"
     timeout: float = 30.0
     completion_timeout: float = 30.0
-    max_memory_mb: int = 1024
+    max_memory_mb: int = 2048
     max_cpu_seconds: int = 180
     report_dir: str | None = None
     auto_update: bool = True
@@ -65,7 +65,7 @@ class Config:
         debug = os.environ.get("SCHEME_LANGSERVER_DEBUG", "disable")
         timeout = _env_float("SCHEME_LANGSERVER_TIMEOUT", 30.0)
         completion_timeout = _env_float("SCHEME_LANGSERVER_COMPLETION_TIMEOUT", 30.0)
-        max_memory_mb = _env_int("SCHEME_LANGSERVER_MAX_MEMORY_MB", 1024)
+        max_memory_mb = _env_int("SCHEME_LANGSERVER_MAX_MEMORY_MB", 2048)
         max_cpu_seconds = _env_int("SCHEME_LANGSERVER_MAX_CPU_SECONDS", 180)
         report_dir = os.environ.get("SCHEME_BRIDGE_REPORT_DIR")
         auto_update = _env_bool("SCHEME_LANGSERVER_AUTO_UPDATE", True)

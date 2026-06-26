@@ -78,7 +78,7 @@ class TestConfig:
         monkeypatch.delenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", raising=False)
         monkeypatch.delenv("SCHEME_LANGSERVER_MAX_CPU_SECONDS", raising=False)
         config = Config.load(root_dir=str(tmp_path))
-        assert config.max_memory_mb == 1024
+        assert config.max_memory_mb == 2048
         assert config.max_cpu_seconds == 180
 
     def test_resource_limits_from_env(
@@ -127,7 +127,7 @@ class TestConfig:
         monkeypatch.setenv("SCHEME_LANGSERVER_PATH", str(fake_bin))
         monkeypatch.setenv("SCHEME_LANGSERVER_MAX_MEMORY_MB", "not_a_number")
         config = Config.load(root_dir=str(tmp_path))
-        assert config.max_memory_mb == 1024
+        assert config.max_memory_mb == 2048
 
     def test_build_cmd_with_cache_path(self) -> None:
         config = Config(
