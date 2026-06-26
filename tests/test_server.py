@@ -107,6 +107,45 @@ class TestLspShutdown:
         assert "warning" in result["content"]
 
 
+class TestLspOpen:
+    async def test_returns_warning_for_unrecognized_extension(self, tmp_path: Path) -> None:
+        test_file = tmp_path / "lib.scm.txt"
+        test_file.write_text("(define x 1)", encoding="utf-8")
+
+        mock_client = MagicMock()
+        mock_client.start = AsyncMock(return_value={
+            "serverInfo": {"name": "test"},
+            "capabilities": {},
+        })
+        mock_client.did_open = AsyncMock()
+
+        with patch("scheme_langserver_bridge.server.LspClient", return_value=mock_client):
+            await server_module.lsp_initialize(str(tmp_path))
+            result = await server_module.lsp_open(str(test_file))
+
+        assert result["content"]["opened"].endswith("lib.scm.txt")
+        assert "warning" in result["content"]
+        assert ".scm" in result["content"]["warning"]
+
+    async def test_no_warning_for_recognized_extension(self, tmp_path: Path) -> None:
+        test_file = tmp_path / "lib.scm"
+        test_file.write_text("(define x 1)", encoding="utf-8")
+
+        mock_client = MagicMock()
+        mock_client.start = AsyncMock(return_value={
+            "serverInfo": {"name": "test"},
+            "capabilities": {},
+        })
+        mock_client.did_open = AsyncMock()
+
+        with patch("scheme_langserver_bridge.server.LspClient", return_value=mock_client):
+            await server_module.lsp_initialize(str(tmp_path))
+            result = await server_module.lsp_open(str(test_file))
+
+        assert result["content"]["opened"].endswith("lib.scm")
+        assert "warning" not in result["content"]
+
+
 class TestLspRestart:
     async def test_restart_initializes_when_not_running(self) -> None:
         mock_client = MagicMock()
@@ -255,9 +294,63 @@ class TestFormatDiagnostics:
         assert item["code"] == "E_UNBOUND"
 
 
+class TestSchemeFileDetection:
+    def test_recognizes_scheme_extensions(self) -> None:
+        assert server_module._is_scheme_file("/foo/bar.scm") is True
+        assert server_module._is_scheme_file("/foo/bar.ss") is True
+        assert server_module._is_scheme_file("/foo/bar.sls") is True
+        assert server_module._is_scheme_file("/foo/bar.sps") is True
+
+    def test_rejects_non_scheme_extensions(self) -> None:
+        assert server_module._is_scheme_file("/foo/bar.scm.txt") is False
+        assert server_module._is_scheme_file("/foo/bar.txt") is False
+        assert server_module._is_scheme_file("/foo/bar.py") is False
+
+    def test_warning_contains_recognized_extensions(self) -> None:
+        warning = server_module._scheme_file_warning("/foo/bar.scm.txt")
+        assert warning is not None
+        assert ".scm" in warning
+        assert "extension '.txt'" in warning
+
+    def test_warning_none_for_scheme_file(self) -> None:
+        assert server_module._scheme_file_warning("/foo/bar.scm") is None
+
+
+class TestNormalizePullDiagnostics:
+    def test_returns_list_directly(self) -> None:
+        items = [{"message": "unused", "severity": 2}]
+        assert server_module._normalize_pull_diagnostics(items) == items
+
+    def test_unwraps_full_document_diagnostic_report(self) -> None:
+        result = {"kind": "full", "items": [{"message": "unused", "severity": 2}]}
+        assert server_module._normalize_pull_diagnostics(result) == [{"message": "unused", "severity": 2}]
+
+    def test_unchanged_report_returns_empty_list(self) -> None:
+        result = {"kind": "unchanged", "resultId": "1"}
+        assert server_module._normalize_pull_diagnostics(result) == []
+
+    def test_empty_dict_returns_none_to_trigger_fallback(self) -> None:
+        assert server_module._normalize_pull_diagnostics({}) is None
+
+    def test_none_returns_none(self) -> None:
+        assert server_module._normalize_pull_diagnostics(None) is None
+
+
+class TestSummarizeCaps:
+    def test_diagnostics_is_always_true(self) -> None:
+        # scheme-langserver does not advertise publishDiagnostics/diagnosticProvider,
+        # but it does support diagnostics via both push and pull models.
+        caps = {"hoverProvider": True}
+        summary = server_module._summarize_caps(caps)
+        assert summary["diagnostics"] is True
+
+
 class TestLspDiagnostics:
     async def test_returns_diagnostics(self, tmp_path: Path) -> None:
         mock_client = MagicMock()
+        # Pull diagnostics returns nothing for this file, so we fall back to
+        # the cached push diagnostics.
+        mock_client.diagnostic = AsyncMock(return_value=None)
         mock_client.get_diagnostics = MagicMock(return_value={
             "file:///test.scm": [{"message": "unbound identifier"}]
         })
@@ -266,6 +359,35 @@ class TestLspDiagnostics:
         result = await server_module.lsp_diagnostics("/test.scm")
         assert "unbound identifier" in str(result["content"])
         assert "summary" in result["content"]["file:///test.scm"]
+
+    async def test_uses_pull_diagnostics_when_available(self, tmp_path: Path) -> None:
+        mock_client = MagicMock()
+        mock_client.diagnostic = AsyncMock(return_value=[
+            {"message": "pulled diagnostic", "severity": 2, "source": "identifier", "code": "unused-local-variable"}
+        ])
+        mock_client.get_diagnostics = MagicMock(return_value={
+            "file:///test.scm": [{"message": "stale push diagnostic"}]
+        })
+        server_module._client = mock_client
+
+        result = await server_module.lsp_diagnostics("/test.scm")
+        content = result["content"]
+        assert "pulled diagnostic" in str(content)
+        assert "stale push diagnostic" not in str(content)
+        assert content["file:///test.scm"]["summary"]["warning"] == 1
+
+    async def test_falls_back_to_push_when_pull_not_supported(self, tmp_path: Path) -> None:
+        mock_client = MagicMock()
+        mock_client.diagnostic = AsyncMock(
+            side_effect=LspError(-32601, "method not found")
+        )
+        mock_client.get_diagnostics = MagicMock(return_value={
+            "file:///test.scm": [{"message": "push diagnostic"}]
+        })
+        server_module._client = mock_client
+
+        result = await server_module.lsp_diagnostics("/test.scm")
+        assert "push diagnostic" in str(result["content"])
 
     async def test_returns_all_diagnostics_when_no_path(self) -> None:
         mock_client = MagicMock()
@@ -278,6 +400,18 @@ class TestLspDiagnostics:
         result = await server_module.lsp_diagnostics(None)
         assert "error1" in str(result["content"])
         assert "error2" in str(result["content"])
+
+    async def test_adds_note_for_unrecognized_extension(self, tmp_path: Path) -> None:
+        mock_client = MagicMock()
+        mock_client.diagnostic = AsyncMock(return_value=None)
+        mock_client.get_diagnostics = MagicMock(return_value={})
+        server_module._client = mock_client
+
+        result = await server_module.lsp_diagnostics("/foo/bar.scm.txt")
+        content = result["content"]
+        assert "file:///foo/bar.scm.txt" in content
+        assert "note" in content["file:///foo/bar.scm.txt"]
+        assert ".scm" in content["file:///foo/bar.scm.txt"]["note"]
 
 
 class TestLspWorkspaceSymbol:

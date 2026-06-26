@@ -85,6 +85,37 @@ class TestLspLifecycle:
         await lsp_client.did_close(uri)
 
 
+class TestPullDiagnostics:
+    async def test_pull_diagnostics_returns_unused_local_variable(self, tmp_path: Path) -> None:
+        # Create a minimal workspace with a .scm file containing an unused
+        # parameter, which scheme-langserver 2.1.4+ reports as
+        # "unused-local-variable".
+        src = tmp_path / "unused.scm"
+        src.write_text(
+            "(library (unused)\n"
+            "  (export f)\n"
+            "  (import (rnrs))\n"
+            "  (define (f x)\n"
+            "    2))\n",
+            encoding="utf-8",
+        )
+
+        config = Config.from_env()
+        client = LspClient(config)
+        await client.start(str(tmp_path))
+        try:
+            uri = "file://" + str(src.resolve())
+            await client.did_open(uri, "scheme", 1, src.read_text(encoding="utf-8"))
+            await asyncio.sleep(2)
+
+            result = await client.diagnostic(uri)
+            assert isinstance(result, list)
+            messages = " ".join(str(d.get("message", "")) for d in result)
+            assert "Unused local variable" in messages
+        finally:
+            await client.stop()
+
+
 class TestLspErrorHandling:
     async def test_request_without_init_fails(self) -> None:
         config = Config.from_env()

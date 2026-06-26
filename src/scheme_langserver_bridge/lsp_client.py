@@ -283,6 +283,19 @@ class LspClient:
             {"textDocument": {"uri": uri}},
         )
 
+    async def diagnostic(self, uri: str) -> Any:
+        """Request fresh diagnostics via textDocument/diagnostic (pull model).
+
+        scheme-langserver supports pull diagnostics in addition to the
+        push-based textDocument/publishDiagnostics notifications. Pull
+        diagnostics are useful when we need fresh results immediately,
+        without waiting for the server's periodic publish timer.
+        """
+        return await self._request(
+            "textDocument/diagnostic",
+            {"textDocument": {"uri": uri}},
+        )
+
     async def workspace_symbol(self, query: str) -> Any:
         return await self._request(
             "workspace/symbol",

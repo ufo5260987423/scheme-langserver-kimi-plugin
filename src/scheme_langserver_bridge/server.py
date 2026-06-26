@@ -119,6 +119,30 @@ def _infer_root_dir(file_path: str) -> str:
     return str(path.parent if path.is_file() else path)
 
 
+# File extensions that scheme-langserver actually analyses. Files with other
+# extensions (e.g. .scm.txt) are ignored by the server's virtual file system
+# even if we send textDocument/didOpen for them.
+_SCHEME_EXTENSIONS = {".sps", ".sls", ".scm", ".ss"}
+
+
+def _is_scheme_file(path: str) -> bool:
+    """Return True if the path has an extension scheme-langserver recognizes."""
+    return Path(path).suffix.lower() in _SCHEME_EXTENSIONS
+
+
+def _scheme_file_warning(path: str) -> str | None:
+    """Return a warning if the file is not a recognized Scheme source file."""
+    if _is_scheme_file(path):
+        return None
+    ext = Path(path).suffix
+    ext_hint = f"extension '{ext}'" if ext else "no extension"
+    return (
+        f"File {ext_hint} is not recognized by scheme-langserver. "
+        f"Only {', '.join(sorted(_SCHEME_EXTENSIONS))} files are indexed and analysed. "
+        f"Rename the file to a recognized extension (e.g. .scm) before using LSP tools."
+    )
+
+
 async def _ensure_initialized(file_path: str | None = None) -> LspClient:
     """Ensure LSP client is initialized, auto-restarting if it crashed."""
     crashed = getattr(_client, "_crashed", False) is True
@@ -493,7 +517,11 @@ async def lsp_open(file_path: str, language_id: str = "scheme") -> dict[str, Any
     uri = _file_uri(file_path)
     try:
         await doc_mgr.open(uri, language_id, text)
-        return {"content": {"opened": uri, "lines": text.count("\n") + 1}}
+        content: dict[str, Any] = {"opened": uri, "lines": text.count("\n") + 1}
+        warning = _scheme_file_warning(file_path)
+        if warning:
+            content["warning"] = warning
+        return {"content": content}
     except Exception as exc:
         return _lsp_error(exc)
 
@@ -754,8 +782,35 @@ async def lsp_diagnostics(file_path: str | None = None) -> dict[str, Any]:
     """
     try:
         client = await _ensure_initialized(file_path or os.getcwd())
-        uri = _file_uri(file_path) if file_path else None
-        result = client.get_diagnostics(uri)
+        if file_path:
+            uri = _file_uri(file_path)
+            # Prefer pull diagnostics (textDocument/diagnostic) for a specific
+            # file because it returns fresh results immediately. scheme-langserver
+            # also pushes diagnostics asynchronously, but the push timer may not
+            # have fired yet when Kimi asks right after lsp_change.
+            try:
+                pull_result = await client.diagnostic(uri)
+                pull_items = _normalize_pull_diagnostics(pull_result)
+                if pull_items is not None:
+                    return _lsp_result(_format_diagnostics({uri: pull_items}))
+            except LspError as exc:
+                # If the server does not support pull diagnostics, fall back to
+                # the cached push diagnostics rather than failing the tool call.
+                if exc.code != -32601:
+                    raise
+
+            # Fall back to cached push diagnostics (textDocument/publishDiagnostics).
+            result = client.get_diagnostics(uri)
+            formatted = _format_diagnostics(result)
+            warning = _scheme_file_warning(file_path)
+            if warning and formatted.get(uri, {}).get("summary", {}).get("total", 0) == 0:
+                formatted.setdefault(uri, {"summary": {}, "diagnostics": []})
+                formatted[uri]["note"] = warning
+            return _lsp_result(formatted)
+
+        # No specific file requested: return cached push diagnostics for all
+        # open files. Pull diagnostics require a text document parameter.
+        result = client.get_diagnostics()
         return _lsp_result(_format_diagnostics(result))
     except Exception as exc:
         return _lsp_error(exc)
@@ -769,7 +824,10 @@ async def lsp_diagnostics(file_path: str | None = None) -> dict[str, Any]:
 def _summarize_caps(caps: dict[str, Any]) -> dict[str, bool]:
     """Summarize LSP server capabilities for the init response."""
     # scheme-langserver uses top-level provider flags (e.g. hoverProvider)
-    # rather than nested textDocument objects
+    # rather than nested textDocument objects. It does not currently advertise
+    # publishDiagnostics in capabilities, but it does send
+    # textDocument/publishDiagnostics notifications and responds to
+    # textDocument/diagnostic requests.
     return {
         "hover": bool(caps.get("hoverProvider")),
         "completion": bool(caps.get("completionProvider")),
@@ -780,5 +838,31 @@ def _summarize_caps(caps: dict[str, Any]) -> dict[str, bool]:
         "documentSymbol": bool(caps.get("documentSymbolProvider")),
         "workspaceSymbol": bool(caps.get("workspaceSymbolProvider")),
         "codeAction": bool(caps.get("codeActionProvider")),
-        "diagnostics": bool(caps.get("publishDiagnostics")),
+        "diagnostics": True,
     }
+
+
+def _normalize_pull_diagnostics(result: Any) -> list[dict[str, Any]] | None:
+    """Normalize the response from textDocument/diagnostic.
+
+    scheme-langserver returns the diagnostics directly as a JSON array instead
+    of the standard DocumentDiagnosticReport wrapper. This helper accepts both
+    forms and returns a plain list of LSP Diagnostic objects, or None if the
+    response should be treated as empty/invalid.
+    """
+    if result is None:
+        return None
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        # Standard LSP 3.17 FullDocumentDiagnosticReport.
+        if result.get("kind") == "full":
+            items = result.get("items", [])
+            return items if isinstance(items, list) else []
+        if result.get("kind") == "unchanged":
+            return []
+        # scheme-langserver may return an empty alist for unrecognised files.
+        if not result:
+            return None
+        return [result]
+    return None
