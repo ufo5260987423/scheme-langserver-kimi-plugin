@@ -148,7 +148,7 @@ If no scheme-langserver executable is found locally, the bridge can **automatica
 | `SCHEME_LANGSERVER_LOG_PATH` | Log file path | `.scheme-langserver.log` in cwd |
 | `SCHEME_LANGSERVER_MULTI_THREAD` | Multi-threading `enable` / `disable` | `enable` |
 | `SCHEME_LANGSERVER_TYPE_INFERENCE` | Type inference `enable` / `disable` | `enable` |
-| `SCHEME_LANGSERVER_TOP_ENVIRONMENT` | Top-level environment: `R6RS` / `R7RS` / `s7` / `goldfish` | `R6RS` |
+| `SCHEME_LANGSERVER_TOP_ENVIRONMENT` | Top-level environment: `R6RS` / `R7RS` / `s7` / `goldfish` / `fluent` (Ansys Fluent Scheme, requires scheme-langserver ≥ 2.1.10) | `R6RS` |
 | `SCHEME_LANGSERVER_CACHE_PATH` | Directory for workspace FASL cache (scheme-langserver 2.1.3+; default: `.scheme-langserver-cache` in project root) | `.scheme-langserver-cache` in project root |
 | `SCHEME_LANGSERVER_TIMEOUT` | Request timeout in seconds | `30.0` |
 | `SCHEME_LANGSERVER_COMPLETION_TIMEOUT` | Completion request timeout in seconds | `30.0` |
