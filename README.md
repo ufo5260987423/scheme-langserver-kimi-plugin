@@ -13,7 +13,7 @@ When you ask Kimi to write, refactor, or explain Scheme code, Kimi can now call 
 - **Syntax / semantic diagnostics** — via `textDocument/publishDiagnostics`
 - **Safe rename edits** — via `textDocument/rename` (server support is on the roadmap)
 - **Function signatures** — via `textDocument/signatureHelp` (server support is on the roadmap)
-- **Workspace-wide symbol search** — via `workspace/symbol` (requires scheme-langserver ≥ 2.1.0 (tested up to 2.1.3))
+- **Workspace-wide symbol search** — via `workspace/symbol` (requires scheme-langserver ≥ 2.1.0 (tested up to 2.1.10))
 - **Code actions** — via `textDocument/codeAction` (server support is on the roadmap)
 
 **Important**: You (the user) never interact with scheme-langserver directly. Kimi invokes the bridge tools automatically when it judges that precise code information would help its reasoning.
@@ -26,7 +26,7 @@ scheme-langserver is actively developed and **not infallible**:
 - Macro support (`syntax-case`, `syntax-rules`) is incomplete. Production builds fall back to hand-written rules.
 - Analysis of unfinished code is best-effort.
 - Implementation-specific Chez Scheme extensions may not be recognized.
-- `workspace/symbol` requires scheme-langserver **≥ 2.1.0** (tested up to 2.1.3).
+- `workspace/symbol` requires scheme-langserver **≥ 2.1.0** (tested up to 2.1.10).
 - `textDocument/rename`, `textDocument/signatureHelp`, and `textDocument/codeAction` are exposed by the bridge but still on the server's roadmap; the server may return "method not found".
 
 Kimi is expected to treat LSP output as a **reference**, cross-check it against its own training knowledge, and gracefully fall back when the server returns errors or nonsense.
@@ -123,7 +123,7 @@ Supported fields:
 | `langserver_path` | string | Override the scheme-langserver executable path |
 | `multi_thread` | string | `enable` / `disable` |
 | `type_inference` | string | `enable` / `disable` |
-| `top_environment` | string | `R6RS` / `R7RS` / `s7` / `goldfish` |
+| `top_environment` | string | `R6RS` / `R7RS` / `s7` / `goldfish` / `fluent` (Ansys Fluent Scheme, requires scheme-langserver ≥ 2.1.10) |
 | `log_path` | string | Override the log file path |
 | `cache_path` | string | Directory for workspace FASL cache (scheme-langserver 2.1.3+; default: `.scheme-langserver-cache` in project root) |
 | `auto_update` | bool | Allow auto-download when no executable is found |

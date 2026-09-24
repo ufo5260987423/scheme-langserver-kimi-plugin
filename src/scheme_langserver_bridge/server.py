@@ -122,7 +122,9 @@ def _infer_root_dir(file_path: str) -> str:
 # File extensions that scheme-langserver actually analyses. Files with other
 # extensions (e.g. .scm.txt) are ignored by the server's virtual file system
 # even if we send textDocument/didOpen for them.
-_SCHEME_EXTENSIONS = {".sps", ".sls", ".scm", ".ss"}
+# `.sld` is recognized by scheme-langserver 2.1.7+ (added to the standard
+# Scheme extension set); older servers simply ignore such files.
+_SCHEME_EXTENSIONS = {".sps", ".sls", ".scm", ".ss", ".sld"}
 
 
 def _is_scheme_file(path: str) -> bool:

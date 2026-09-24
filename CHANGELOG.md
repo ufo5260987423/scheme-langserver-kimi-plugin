@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `.sld` files are now recognized as Scheme sources in `lsp_open` / `lsp_diagnostics` extension warnings (scheme-langserver 2.1.7+ includes `.sld` in its standard extension set).
+
+### Changed
+- Confirmed compatibility with scheme-langserver **2.1.10**: the full test suite (139 unit + integration) passes against a 2.1.10 build.
+- Pinned `mcp>=1.12.0,<2`: mcp 2.x renamed `FastMCP` to `MCPServer`, and the bridge still uses the 1.x API.
+- Updated documentation for server-side changes between 2.1.4 and 2.1.10:
+  - 2.1.6+ release binaries persist the workspace FASL cache (`--full-chez` builds); previously the cache only worked in local source builds.
+  - 2.1.7 adds `.sld` to the standard Scheme extension set.
+  - 2.1.8 completion items now carry a proper `textEdit` (full prefix range) plus a suffix-only `insertText`.
+  - 2.1.9 is 32–51% faster (`match-index-node` dispatch), fixes `didOpen` not synchronizing document text, and republishes cached diagnostics after a cache load.
+  - 2.1.10 fixes a multi-threaded "queue is empty" race and tokenizer failures on `#!eof` tails / non-parenthesized first datums that could abort whole-workspace `initialize`.
+
+### Added
 - **Project-level configuration** via `.scheme-langserver.toml` or `.scheme-langserver.json` in the project root.
   - Supported fields: `langserver_path`, `top_environment`, `multi_thread`, `type_inference`, `log_path`, `cache_path`, `auto_update`, `max_memory_mb`, `max_cpu_seconds`.
   - Configuration priority: project config > environment variables > defaults.

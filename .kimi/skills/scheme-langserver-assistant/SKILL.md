@@ -30,7 +30,7 @@ scheme-langserver 是一个**辅助参考工具**，不是绝对权威。它的�
 |--------|---------|------------|
 | **高** | `definition`（跳转到定义） | 可信任，用于定位代码 |
 | **高** | `references`（查找引用） | 可信任，用于重构前分析 |
-| **高** | 基础 `diagnostics`（括号匹配、未定义标识符、tokenizer 错误） | 可信任；scheme-langserver 2.1.2 恢复了 fault-tolerant tokenizer 中的括号不匹配诊断（如 `unclosed parenthesis`），2.1.3 保持该能力，比肉眼可靠得多 |
+| **高** | 基础 `diagnostics`（括号匹配、未定义标识符、tokenizer 错误） | 可信任；scheme-langserver 2.1.2 恢复了 fault-tolerant tokenizer 中的括号不匹配诊断（如 `unclosed parenthesis`），2.1.10 保持该能力，比肉眼可靠得多 |
 | **中** | `completion`（补全列表） | 参考使用，可能漏掉宏生成的标识符 |
 | **中** | `hover`（类型/文档） | 参考使用，宏展开后的信息可能不准 |
 | **低** | `type inference`（类型推断） | 明确标注为实验性，频繁出错，仅作参考 |

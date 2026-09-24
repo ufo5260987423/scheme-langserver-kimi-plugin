@@ -20,7 +20,8 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "mcp>=1.12.0",
+    # mcp 2.x renamed FastMCP to MCPServer; the bridge still uses the 1.x API.
+    "mcp>=1.12.0,<2",
 ]
 
 [project.optional-dependencies]

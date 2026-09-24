@@ -31,7 +31,7 @@ scheme-langserver 是基于 Chez Scheme 的静态分析器，能提供以下 LLM
 | `textDocument/publishDiagnostics` | 获取**语法错误**和**语义错误**的实时列表 | Kimi 生成或修改代码后，立即知道是否有错误，及时在回复中修正 |
 | `textDocument/rename` | 获取安全重命名所需的**所有修改位置**（跨文件） | Kimi 执行重命名重构时，能一次性给出所有需要改动的位置，保证一致性 |
 | `textDocument/signatureHelp` | 获取函数调用的**参数列表**和**参数类型** | Kimi 写函数调用时，知道每个参数应该是什么类型，减少类型不匹配的错误 |
-| `workspace/symbol` | 获取工作区中所有匹配的符号（**需 scheme-langserver ≥ 2.1.0 (tested up to 2.1.3)**） | Kimi 需要在整个项目中搜索某个函数或变量时，快速定位 |
+| `workspace/symbol` | 获取工作区中所有匹配的符号（**需 scheme-langserver ≥ 2.1.0 (tested up to 2.1.10)**） | Kimi 需要在整个项目中搜索某个函数或变量时，快速定位 |
 | 类型推断（实验性） | 获取复杂表达式的**推导类型** | Kimi 分析高阶函数、宏展开后的表达式时，有类型信息作为依据，推理更可靠 |
 
 ### scheme-langserver 的能力边界（Kimi 必须知道）
@@ -47,7 +47,7 @@ scheme-langserver 的返回信息**并非完全可靠**。Kimi 在调用 LSP 工
 - **活跃开发中，有 bug**：作者多次在 release note 和文档中承认"There're many many bugs"
 - **多线程机制增加不确定性**：`-m enable` 开启多线程后，竞态条件可能导致偶发的分析结果不一致
 - **工具可用性受服务器版本限制**：
-  - `workspace/symbol` 需要 **scheme-langserver ≥ 2.1.0 (tested up to 2.1.3)**（此前版本不支持）
+  - `workspace/symbol` 需要 **scheme-langserver ≥ 2.1.0 (tested up to 2.1.10)**（此前版本不支持）
   - `textDocument/rename`、`textDocument/signatureHelp`、`textDocument/codeAction` 当前仅在 scheme-langserver 的 Roadmap 中，服务器可能返回 "method not found" 或行为不完整
 - **诊断范围持续扩展（2.1.0+）**：新增重复标识符检测、未使用导入检测、tokenizer 语法错误等；诊断信息现在包含标准 `source` 和 `code` 字段
 
@@ -56,7 +56,7 @@ scheme-langserver 的返回信息**并非完全可靠**。Kimi 在调用 LSP 工
 1. **交叉验证**：LSP 返回的信息应与 Kimi 自身的训练知识对照。如果两者矛盾，优先相信自己的训练数据，但把 LSP 结果作为疑点进一步排查
 2. **置信度分级**：
    - **高置信度**：`definition`（跳转到定义）、`references`（查找引用）、基础语法 `diagnostics`（括号匹配、未定义标识符、tokenizer 错误）
-   - **中置信度**：`completion`（补全列表可能漏掉宏生成的标识符）；`workspace/symbol`（≥ 2.1.0 / tested up to 2.1.3，跨文件符号搜索准确度取决于索引完整性）
+   - **中置信度**：`completion`（补全列表可能漏掉宏生成的标识符）；`workspace/symbol`（≥ 2.1.0 / tested up to 2.1.10，跨文件符号搜索准确度取决于索引完整性）
    - **低置信度**：`type inference`（实验性）、宏相关的 `hover` 信息、`rename` / `signatureHelp` / `codeAction`（服务器端仍在 Roadmap 阶段）
 3. **括号灾难防控（Scheme 特有）**：S-expression 的括号敏感是致命问题。Kimi 每次生成或修改 Scheme 代码后，**必须**通过 `lsp_diagnostics` 拉取诊断信息来验证括号匹配和 tokenizer 错误。LLM 靠肉眼精确匹配多层嵌套括号的能力极差，而 scheme-langserver 对这类结构性错误的检测是高置信度的。不要把未验证括号匹配的代码直接交给用户。
 4. **fallback 机制**：当 LSP 返回异常、超时或明显荒谬的结果时，Kimi 应优雅降级，直接基于自身知识回答，而不是把错误信息传给用户
@@ -197,7 +197,7 @@ MCP Tools ↔ LSP Methods 映射：
   1. 项目配置 `.scheme-langserver.toml` / `.scheme-langserver.json`（位于项目根目录）
   2. 环境变量
   3. 内置默认值
-- **项目配置支持字段**：`langserver_path`、`top_environment`、`multi_thread`、`type_inference`、`log_path`、`cache_path`、`auto_update`、`max_memory_mb`、`max_cpu_seconds`
+- **项目配置支持字段**：`langserver_path`、`top_environment`（可选值 `r6rs`/`r7rs`/`s7`/`goldfish`/`fluent`，大小写不敏感；`fluent` 为 Ansys Fluent 嵌入式 Scheme 顶层环境，需 scheme-langserver ≥ 2.1.10）、`multi_thread`、`type_inference`、`log_path`、`cache_path`、`auto_update`、`max_memory_mb`、`max_cpu_seconds`
 - **LSP 服务器发现链**：
   1. 项目配置中的 `langserver_path`
   2. 环境变量 `SCHEME_LANGSERVER_PATH`
@@ -205,7 +205,7 @@ MCP Tools ↔ LSP Methods 映射：
   4. 已知本地开发路径（项目内 `./scheme-langserver/run`、上级目录、`~/Documents/workspace/scheme-langserver/run`）
   5. **自动下载**（当 `auto_update=true` 且平台为 Linux x86_64 glibc 时）：通过 GitHub Release 静态 URL + HEAD 请求检测最新版本，缓存到 `~/.cache/scheme-langserver-bridge/versions/<version>/`
 - **日志路径**：默认使用当前工作目录下的 `.scheme-langserver.log`，可通过环境变量或项目配置覆盖
-- **FASL 缓存路径**：scheme-langserver 2.1.3+ 默认启用工作区 FASL 缓存，目录为项目根目录下的 `.scheme-langserver-cache`，可通过 `cache_path` 项目配置字段或 `SCHEME_LANGSERVER_CACHE_PATH` 环境变量覆盖
+- **FASL 缓存路径**：scheme-langserver 2.1.3+ 默认启用工作区 FASL 缓存，目录为项目根目录下的 `.scheme-langserver-cache`，可通过 `cache_path` 项目配置字段或 `SCHEME_LANGSERVER_CACHE_PATH` 环境变量覆盖。注意：2.1.3–2.1.5 的发布二进制缺少 `$write-fasl-bytevectors` 原语，缓存只在本地源码构建中生效；**2.1.6+ 的发布二进制已修复**（`compile-chez-program --full-chez`），缓存对所有安装方式生效
 - **项目根目录**：通过 `lsp_initialize` 工具参数传入
 - **可执行文件切换**：`lsp_initialize` 和 `lsp_restart` 支持 `langserver_path` 参数，可覆盖环境变量和项目配置，用于调试 scheme-langserver 本地构建
 - **版本检查缓存**：`~/.cache/scheme-langserver-bridge/version-check.json`，TTL 1 小时
