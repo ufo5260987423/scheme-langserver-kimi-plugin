@@ -172,6 +172,21 @@ class LspClient:
                 await self._notify("exit", None)
             except Exception as exc:
                 logger.warning("Exit notification failed: %s", exc)
+            # Give the server time to save the workspace cache and exit
+            # gracefully. For large projects (e.g. scheme-langserver itself)
+            # writing the FASL cache can take tens of seconds. Killing too
+            # early discards the cache and forces a slow cold start next time.
+            logger.info(
+                "Waiting up to 120s for scheme-langserver to save cache and exit (pid=%s)",
+                self.process.pid,
+            )
+            try:
+                await asyncio.wait_for(self.process.wait(), timeout=120.0)
+                logger.info("scheme-langserver exited with code %s", self.process.returncode)
+            except TimeoutError:
+                logger.warning(
+                    "LSP server did not exit within 120s after exit notification; forcing kill"
+                )
         self._shutdown = True
         await self._cleanup()
 
