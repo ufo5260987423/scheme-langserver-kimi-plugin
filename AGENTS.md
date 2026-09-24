@@ -282,7 +282,7 @@ python3 -m scheme_langserver_bridge
 
 - `tests/test_integration.py`：需要真实 scheme-langserver 进程的测试
 - 使用一个最小的 Scheme 项目（`tests/fixtures/scheme-project/`）作为测试靶子
-- CI 必须在 NixOS 环境下运行（可通过 GitHub Actions + Nix 实现）
+- 运行和测试必须在 NixOS 或 Nix 环境下完成（`nix develop`）
 
 ### 手动测试清单
 
