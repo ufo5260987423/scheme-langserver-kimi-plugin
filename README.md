@@ -278,6 +278,18 @@ lsp_restart(langserver_path="/home/dev/scheme-langserver/run")
 The bridge will use that executable and reopen all tracked documents. This is
 useful when iterating on scheme-langserver itself.
 
+## Example Prompt: Fluent–FPGA Co-Verification
+
+[docs/提示词-fluent-fpga协同代码生成.md](docs/提示词-fluent-fpga协同代码生成.md) contains a ready-to-use **prompt template** (in Chinese) that drives Kimi to generate Fluent Scheme code for CFD–FPGA co-verification workflows.
+
+**How to use it:**
+
+1. Place a `.scheme-langserver.toml` in your project root with `top_environment = "fluent"` so the bridge analyzes code against ANSYS Fluent's Scheme dialect (requires scheme-langserver **≥ 2.1.10**).
+2. Fill in the FPGA project path at the end of the prompt file.
+3. Paste the prompt into a Kimi Code CLI session with this bridge configured.
+
+Kimi will then read the FPGA project, and generate three Fluent Scheme modules — `verify/` (reference-solution comparison with error metrics), `convert/` (bidirectional FPGA ↔ Fluent data conversion), and `exp/` (parameter sweeps and experiment automation) — self-checking each file with `lsp_diagnostics` / `lsp_definition` via this bridge.
+
 ## Available MCP Tools
 
 All tools are prefixed with `lsp_`:
