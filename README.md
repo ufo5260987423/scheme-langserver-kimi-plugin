@@ -33,18 +33,20 @@ Kimi is expected to treat LSP output as a **reference**, cross-check it against 
 
 ## Installation
 
-### Via PyPI (any OS)
+### From GitHub (any OS)
+
+> **Note**: This package is **not published on PyPI**. Install directly from the Git repository instead.
 
 Requires Python 3.12+ and a local [scheme-langserver](https://github.com/ufo5260987423/scheme-langserver) executable.
 
 ```bash
-pip install scheme-langserver-bridge
+pip install git+https://github.com/ufo5260987423/scheme-langserver-kimi-plugin.git
 ```
 
 Or with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv pip install scheme-langserver-bridge
+uv pip install git+https://github.com/ufo5260987423/scheme-langserver-kimi-plugin.git
 ```
 
 ### Via Nix
