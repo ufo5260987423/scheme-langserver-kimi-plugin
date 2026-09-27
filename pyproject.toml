@@ -35,9 +35,9 @@ dev = [
 scheme-langserver-bridge = "scheme_langserver_bridge.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/scheme-langserver/scheme-langserver-bridge"
-Repository = "https://github.com/scheme-langserver/scheme-langserver-bridge"
-Issues = "https://github.com/scheme-langserver/scheme-langserver-bridge/issues"
+Homepage = "https://github.com/ufo5260987423/scheme-langserver-kimi-plugin"
+Repository = "https://github.com/ufo5260987423/scheme-langserver-kimi-plugin"
+Issues = "https://github.com/ufo5260987423/scheme-langserver-kimi-plugin/issues"
 
 [build-system]
 requires = ["hatchling"]

@@ -65,8 +65,8 @@ uv sync --extra dev
 ### From source
 
 ```bash
-git clone <this-repo>
-cd scheme-langserver-bridge
+git clone https://github.com/ufo5260987423/scheme-langserver-kimi-plugin.git
+cd scheme-langserver-kimi-plugin
 uv sync --extra dev
 ```
 
