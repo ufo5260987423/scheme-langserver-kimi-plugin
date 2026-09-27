@@ -299,6 +299,28 @@ All tools are prefixed with `lsp_`:
 | `lsp_diagnostics` | Get errors and warnings (critical for catching unmatched brackets / tokenizer failures in Scheme) |
 | `lsp_export_debug_report` | Export a debug report for upstream issue reporting |
 
+## Troubleshooting
+
+### Status bar shows `MCP Servers: 0/1 connected, 0 tools` with a spinning indicator
+
+This is usually **not a real connection failure**, but a startup-timing artifact of Kimi CLI:
+
+1. In interactive shell mode, Kimi CLI **defers MCP server loading** so the UI can appear immediately, then connects in the background. While this is happening, the status bar shows `0/1 connected, 0 tools` with a spinner — by design.
+2. The bridge itself starts fast (cold `initialize` response ≈ 1 s), so the actual connection finishes within a few seconds.
+3. However, the prompt status bar may **not repaint immediately** after the background connection completes — the old spinner frame can linger on screen until your next keystroke or UI refresh.
+
+**How to verify the server actually connected:**
+
+- Check the Kimi CLI log for a `Connected MCP server: scheme-langserver` line:
+
+  ```bash
+  grep "Connected MCP server" ~/.kimi/logs/kimi.log
+  ```
+
+- Or simply ask Kimi in the conversation — if the `lsp_*` tools are loaded, the connection succeeded.
+
+**If the spinner persists for more than ~15 seconds**, it is a genuine connection failure. Check `~/.kimi/logs/kimi.log` for the underlying error (common causes: wrong `command`/`args` in `~/.kimi/mcp.json`, missing `python3`, or the venv path being moved).
+
 ## NixOS Specific Notes
 
 - Enter the development environment with `nix develop`.
